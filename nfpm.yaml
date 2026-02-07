@@ -1,0 +1,38 @@
+name: bandwidth-monitor
+arch: "${GOARCH}"
+platform: linux
+version: "${VERSION}"
+maintainer: "Annika Wickert <awlx@users.noreply.github.com>"
+description: "Real-time network monitoring dashboard with embedded web UI"
+vendor: "awlx"
+homepage: "https://github.com/awlx/bandwidth-monitor"
+license: "ISC"
+
+depends:
+  - libpcap0.8
+
+contents:
+  - src: ./bandwidth-monitor
+    dst: /usr/bin/bandwidth-monitor
+    file_info:
+      mode: 0755
+
+  - src: ./env.example
+    dst: /etc/bandwidth-monitor/env
+    type: config|noreplace
+    file_info:
+      mode: 0600
+
+  - src: ./bandwidth-monitor-pkg.service
+    dst: /lib/systemd/system/bandwidth-monitor.service
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: ./packaging/postinstall.sh
+  preremove: ./packaging/preremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - libpcap
