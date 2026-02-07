@@ -82,14 +82,14 @@ chmod 0600 /opt/bandwidth-monitor/.env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LISTEN` | `:8080` | HTTP listen address (e.g. `192.168.1.1:8080`) |
+| `LISTEN` | `:8080` | HTTP listen address (e.g. `198.51.100.1:8080`) |
 | `DEVICE` | *(all)* | Network device for packet capture (e.g. `eth0`) |
 | `GEO_COUNTRY` | `GeoLite2-Country.mmdb` | Path to GeoLite2 Country MMDB |
 | `GEO_ASN` | `GeoLite2-ASN.mmdb` | Path to GeoLite2 ASN MMDB |
-| `ADGUARD_URL` | *(disabled)* | AdGuard Home base URL (e.g. `http://adguard.local`) |
+| `ADGUARD_URL` | *(disabled)* | AdGuard Home base URL (e.g. `http://adguard.example.net`) |
 | `ADGUARD_USER` | | AdGuard Home username |
 | `ADGUARD_PASS` | | AdGuard Home password |
-| `UNIFI_URL` | *(disabled)* | UniFi controller URL (e.g. `https://unifi.local:8443`) |
+| `UNIFI_URL` | *(disabled)* | UniFi controller URL (e.g. `https://unifi.example.net:8443`) |
 | `UNIFI_USER` | | UniFi controller username |
 | `UNIFI_PASS` | | UniFi controller password |
 | `UNIFI_SITE` | `default` | UniFi site name |
