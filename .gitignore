@@ -1,0 +1,6 @@
+node_modules/
+screenshots/
+package-lock.json
+scripts/
+package.json
+.DS_Store
