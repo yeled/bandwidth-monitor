@@ -1,6 +1,8 @@
 # Bandwidth Monitor
 
-A real-time network monitoring dashboard for Linux, written in Go. Single-binary deployment with an embedded web UI, optional AdGuard Home DNS stats, UniFi wireless monitoring, GeoIP enrichment, and a macOS menu bar plugin.
+A real-time network monitoring dashboard for Linux, written in Go. 
+
+Single-binary deployment with an embedded web UI, optional AdGuard Home DNS stats, UniFi wireless monitoring, GeoIP enrichment, and a macOS menu bar plugin.
 
 ## Features
 
