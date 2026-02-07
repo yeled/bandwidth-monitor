@@ -1,8 +1,8 @@
 #!/bin/bash
 # <xbar.title>Bandwidth Monitor</xbar.title>
 # <xbar.version>v1.0</xbar.version>
-# <xbar.author>bandwidth-web-go</xbar.author>
-# <xbar.desc>Shows live network stats from the bandwidth-web-go server</xbar.desc>
+# <xbar.author>bandwidth-monitor</xbar.author>
+# <xbar.desc>Shows live network stats from the bandwidth-monitor server</xbar.desc>
 # <xbar.dependencies>curl,jq</xbar.dependencies>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>

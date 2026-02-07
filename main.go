@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"bandwidth-web-go/adguard"
-	"bandwidth-web-go/collector"
-	"bandwidth-web-go/geoip"
-	"bandwidth-web-go/handler"
-	"bandwidth-web-go/talkers"
-	"bandwidth-web-go/unifi"
+	"bandwidth-monitor/adguard"
+	"bandwidth-monitor/collector"
+	"bandwidth-monitor/geoip"
+	"bandwidth-monitor/handler"
+	"bandwidth-monitor/talkers"
+	"bandwidth-monitor/unifi"
 )
 
 //go:embed static/*

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"bandwidth-web-go/adguard"
-	"bandwidth-web-go/collector"
-	"bandwidth-web-go/talkers"
-	"bandwidth-web-go/unifi"
+	"bandwidth-monitor/adguard"
+	"bandwidth-monitor/collector"
+	"bandwidth-monitor/talkers"
+	"bandwidth-monitor/unifi"
 
 	"github.com/gorilla/websocket"
 )

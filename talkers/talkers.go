@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"bandwidth-web-go/geoip"
+	"bandwidth-monitor/geoip"
 
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"

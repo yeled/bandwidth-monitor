@@ -1,4 +1,4 @@
-module bandwidth-web-go
+module bandwidth-monitor
 
 go 1.25.7
 
