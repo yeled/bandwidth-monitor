@@ -1,0 +1,861 @@
+:root {
+    --bg-0: #09090b;
+    --bg-1: #111113;
+    --bg-2: #18181b;
+    --bg-3: #1f1f23;
+    --bg-hover: #27272a;
+    --accent: #3b82f6;
+    --accent-dim: rgba(59, 130, 246, 0.12);
+    --rx: #22d3ee;
+    --rx-dim: rgba(34, 211, 238, 0.10);
+    --tx: #a78bfa;
+    --tx-dim: rgba(167, 139, 250, 0.10);
+    --text-0: #fafafa;
+    --text-1: #a1a1aa;
+    --text-2: #71717a;
+    --border: #27272a;
+    --danger: #ef4444;
+    --success: #22c55e;
+    --warning: #eab308;
+    --radius: 8px;
+}
+
+/* ── Light theme (explicit) ── */
+[data-theme="light"] {
+    --bg-0: #fafafa; --bg-1: #ffffff; --bg-2: #f4f4f5; --bg-3: #e4e4e7;
+    --bg-hover: #e4e4e7;
+    --accent: #2563eb; --accent-dim: rgba(37,99,235,0.10);
+    --rx: #0891b2; --rx-dim: rgba(8,145,178,0.08);
+    --tx: #7c3aed; --tx-dim: rgba(124,58,237,0.08);
+    --text-0: #18181b; --text-1: #52525b; --text-2: #71717a;
+    --border: #d4d4d8;
+    --danger: #dc2626; --success: #16a34a; --warning: #ca8a04;
+}
+/* ── Light theme (system auto) ── */
+@media (prefers-color-scheme: light) {
+    [data-theme="auto"] {
+        --bg-0: #fafafa; --bg-1: #ffffff; --bg-2: #f4f4f5; --bg-3: #e4e4e7;
+        --bg-hover: #e4e4e7;
+        --accent: #2563eb; --accent-dim: rgba(37,99,235,0.10);
+        --rx: #0891b2; --rx-dim: rgba(8,145,178,0.08);
+        --tx: #7c3aed; --tx-dim: rgba(124,58,237,0.08);
+        --text-0: #18181b; --text-1: #52525b; --text-2: #71717a;
+        --border: #d4d4d8;
+        --danger: #dc2626; --success: #16a34a; --warning: #ca8a04;
+    }
+}
+
+/* ── Theme toggle ── */
+.theme-toggle {
+    display: flex; align-items: center; gap: 2px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px;
+}
+.theme-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 24px; border: none; border-radius: 4px;
+    background: transparent; color: var(--text-2); cursor: pointer;
+    transition: all 0.15s;
+}
+.theme-btn:hover { color: var(--text-0); background: var(--bg-hover); }
+.theme-btn.active { background: var(--bg-3); color: var(--text-0); }
+.theme-btn svg { width: 14px; height: 14px; }
+
+/* ── Main navigation tabs ── */
+.main-nav { display: flex; gap: 4px; margin-bottom: 20px; }
+.main-nav-tab {
+    padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    cursor: pointer; color: var(--text-2); background: transparent;
+    border: 1px solid transparent; transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+}
+.main-nav-tab:hover { color: var(--text-0); background: var(--bg-2); }
+.main-nav-tab.active {
+    background: var(--accent-dim); color: var(--accent);
+    border-color: rgba(59,130,246,0.15);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg-0);
+    color: var(--text-0);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 20px 24px;
+}
+
+/* ── Header ── */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-0);
+    letter-spacing: -0.01em;
+}
+
+.header h1 span {
+    color: var(--text-2);
+    font-weight: 400;
+    margin-left: 6px;
+}
+
+.status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-2);
+}
+
+.status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+}
+
+.status-dot.error { background: var(--danger); }
+
+/* ── Stats row ── */
+.stats-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.stats-group {
+    flex: 1;
+    min-width: 200px;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.stats-group-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-2);
+    padding: 10px 16px 0;
+}
+
+.stats-group-header span {
+    font-weight: 400;
+    color: var(--text-2);
+    margin-left: 4px;
+}
+
+.stats-group-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    padding: 10px 16px 12px;
+}
+
+.stat-mini-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+    margin-bottom: 2px;
+}
+
+.stat-mini-value {
+    font-size: 16px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.stat-mini-value.rx { color: var(--rx); }
+.stat-mini-value.tx { color: var(--tx); }
+
+.stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--text-0);
+}
+
+.stat-value.rx { color: var(--rx); }
+.stat-value.tx { color: var(--tx); }
+
+/* ── Cards ── */
+.card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.chart-section {
+    overflow: hidden;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-0);
+}
+
+.card-subtitle {
+    font-size: 11px;
+    color: var(--text-2);
+    margin-top: 1px;
+}
+
+.card-body {
+    padding: 16px 20px;
+}
+
+/* ── Chart ── */
+.chart-section { margin-bottom: 20px; }
+
+.chart-container {
+    height: 260px;
+    padding: 16px 20px 12px;
+    overflow: hidden;
+}
+
+/* ── Interface tabs ── */
+.iface-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.iface-tab {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text-2);
+    background: transparent;
+    border: none;
+    transition: all 0.15s;
+}
+
+.iface-tab:hover { color: var(--text-0); background: var(--bg-3); }
+
+.iface-tab.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+/* ── Interface groups ── */
+.iface-groups { margin-bottom: 20px; }
+
+/* ── Interface cards — single flowing grid ── */
+.iface-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.iface-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+}
+
+.iface-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-0);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.iface-group-badge {
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--bg-3);
+    color: var(--text-2);
+    flex-shrink: 0;
+}
+
+.iface-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.iface-status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+}
+
+.iface-status-dot.up { background: var(--success); }
+.iface-status-dot.down { background: var(--danger); }
+.iface-status-dot.unknown { background: var(--text-2); }
+
+.vpn-routing {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: -10px;
+    margin-bottom: 10px;
+}
+
+.vpn-routing.active {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--success);
+}
+
+.vpn-routing.inactive {
+    background: rgba(113, 113, 122, 0.12);
+    color: var(--text-2);
+}
+
+.iface-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.iface-stat-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    margin-bottom: 2px;
+}
+
+.iface-stat-value {
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-0);
+}
+
+.label-rx { color: var(--rx); }
+.label-tx { color: var(--tx); }
+.label-err { color: var(--danger); }
+
+/* ── Interface addresses ── */
+.iface-addrs {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.iface-addr-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-2);
+}
+.iface-addr-tag {
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.iface-addr-tag.v4 {
+    background: rgba(96, 165, 250, 0.12);
+    color: #60a5fa;
+}
+.iface-addr-tag.v6 {
+    background: rgba(168, 85, 247, 0.12);
+    color: #a855f7;
+}
+.iface-addr-list {
+    word-break: break-all;
+}
+
+/* ── Sparklines ── */
+.sparkline-wrap {
+    margin-bottom: 12px;
+    height: 36px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--bg-2);
+}
+.sparkline-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ── Two-column layout ── */
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* ── Four-column layout for breakdown charts ── */
+.breakdown-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.breakdown-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.breakdown-chart-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.breakdown-chart-wrap {
+    width: 120px;
+    height: 120px;
+    flex-shrink: 0;
+}
+
+.breakdown-legend {
+    width: 100%;
+}
+
+.breakdown-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-2);
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.breakdown-toggle:hover {
+    color: var(--text-0);
+    background: var(--bg-2);
+}
+
+.breakdown-toggle svg {
+    width: 12px;
+    height: 12px;
+    transition: transform 0.2s;
+}
+
+.breakdown-toggle.open svg {
+    transform: rotate(180deg);
+}
+
+.breakdown-detail {
+    display: none;
+    border-top: 1px solid var(--border);
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.breakdown-detail.open {
+    display: block;
+}
+
+@media (max-width: 1200px) {
+    .breakdown-row { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 700px) {
+    .breakdown-row { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+    .two-col { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Tables ── */
+table { width: 100%; border-collapse: collapse; }
+
+thead th {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-2);
+    padding: 10px 16px;
+    text-align: left;
+    background: var(--bg-2);
+}
+
+tbody td {
+    padding: 10px 16px;
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+}
+
+tbody tr:hover { background: var(--bg-2); }
+
+.rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--bg-3);
+    color: var(--text-2);
+}
+
+.rank-1 { background: var(--accent-dim); color: var(--accent); }
+
+.ip-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-0);
+}
+
+.hostname {
+    color: var(--text-2);
+    font-size: 11px;
+    display: block;
+    margin-top: 1px;
+}
+
+.bar-cell {
+    position: relative;
+    min-width: 100px;
+}
+
+.bar-bg {
+    position: absolute;
+    top: 50%; left: 0;
+    transform: translateY(-50%);
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-3);
+    width: 100%;
+}
+
+.bar-fill {
+    position: absolute;
+    top: 50%; left: 0;
+    transform: translateY(-50%);
+    height: 4px;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.bar-fill.bw { background: var(--rx); }
+.bar-fill.vol { background: var(--tx); }
+
+.empty-state {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-2);
+    font-size: 13px;
+}
+
+.footer {
+    text-align: center;
+    padding: 24px 0 12px;
+    color: var(--text-2);
+    font-size: 11px;
+}
+
+/* ── DNS Section ── */
+.dns-section { margin-bottom: 20px; }
+
+.dns-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.dns-stat-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+}
+
+.dns-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    margin-bottom: 4px;
+}
+
+.dns-stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--text-0);
+}
+
+.dns-stat-value.blocked { color: var(--danger); }
+.dns-stat-value.pct { color: var(--warning); }
+.dns-stat-value.latency { color: var(--rx); }
+
+.dns-chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.dns-chart-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.dns-chart-wrap {
+    height: 80px;
+    padding: 8px 12px;
+}
+
+@media (max-width: 900px) {
+    .dns-stats-row { grid-template-columns: repeat(2, 1fr); }
+    .dns-chart-row { grid-template-columns: 1fr; }
+}
+
+canvas { outline: none; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+
+/* ── VPN routing banner ── */
+.vpn-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.vpn-banner.active {
+    display: flex;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    color: var(--success);
+}
+
+.vpn-banner.inactive {
+    display: none;
+}
+
+.vpn-banner-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+    animation: vpn-pulse 2s infinite;
+}
+
+@keyframes vpn-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    50% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0); }
+}
+
+.vpn-banner-text {
+    flex: 1;
+}
+
+.vpn-banner-since {
+    font-size: 11px;
+    color: var(--text-2);
+    font-weight: 400;
+}
+
+/* ── WiFi Section ── */
+.wifi-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.wifi-stat-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+}
+
+.wifi-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    margin-bottom: 4px;
+}
+
+.wifi-stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--text-0);
+}
+
+.wifi-stat-value.ap { color: var(--accent); }
+.wifi-stat-value.clients { color: var(--rx); }
+.wifi-stat-value.ssids { color: var(--tx); }
+
+/* Signal strength badges */
+.signal-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.signal-badge.sig-great { background: rgba(34,197,94,0.15); color: #22c55e; }
+.signal-badge.sig-good  { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.signal-badge.sig-ok    { background: rgba(234,179,8,0.15);  color: #eab308; }
+.signal-badge.sig-weak  { background: rgba(239,68,68,0.15);  color: #ef4444; }
+
+.wifi-ap-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.wifi-ap-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+}
+
+.wifi-ap-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-0);
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.wifi-ap-model {
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.wifi-ap-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.wifi-ap-stat-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    margin-bottom: 2px;
+}
+
+.wifi-ap-stat-value {
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-0);
+}
+
+.wifi-ssid-table th.ssid-bar-col { width: 28%; }
+
+@media (max-width: 900px) {
+    .wifi-stats-row { grid-template-columns: 1fr; }
+}

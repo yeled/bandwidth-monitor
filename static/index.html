@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bandwidth Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>(function(){var t=localStorage.getItem('bw-theme')||'auto';document.documentElement.setAttribute('data-theme',t)})()</script>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Bandwidth Monitor<span>v1.0</span></h1>
+            <div style="display:flex;align-items:center;gap:12px">
+                <div class="theme-toggle" id="themeToggle">
+                    <button class="theme-btn" data-theme-val="auto" title="System"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+                    <button class="theme-btn" data-theme-val="light" title="Light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+                    <button class="theme-btn" data-theme-val="dark" title="Dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+                </div>
+                <div class="status-badge">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Connecting</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-nav">
+            <button class="main-nav-tab active" data-tab="traffic" onclick="window._switchTab('traffic')">Traffic</button>
+            <button class="main-nav-tab" data-tab="dns" onclick="window._switchTab('dns')">DNS</button>
+            <button class="main-nav-tab" data-tab="wifi" onclick="window._switchTab('wifi')">WiFi</button>
+        </div>
+
+        <div class="tab-panel active" id="tabTraffic">
+
+        <div class="vpn-banner" id="vpnBanner">
+            <span class="vpn-banner-dot"></span>
+            <span class="vpn-banner-text">Traffic routed via VPN <span class="vpn-banner-since" id="vpnBannerSince"></span></span>
+        </div>
+
+        <div class="stats-row" id="statsRow"></div>
+
+        <div class="iface-groups" id="ifaceGroups"></div>
+
+        <div class="card chart-section">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Live Traffic</div>
+                    <div class="card-subtitle">Per-interface bandwidth</div>
+                </div>
+                <div class="iface-tabs" id="ifaceTabs"></div>
+            </div>
+            <div class="chart-container">
+                <canvas id="trafficChart"></canvas>
+            </div>
+        </div>
+
+        <div class="breakdown-row">
+            <div class="breakdown-card" id="ipvSection">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">IP Version</div>
+                        <div class="card-subtitle">IPv4 vs IPv6 (24h)</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="ipvChart"></canvas></div>
+                    <div class="breakdown-legend" id="ipvLegend"></div>
+                </div>
+            </div>
+
+            <div class="breakdown-card" id="protoSection">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Protocols</div>
+                        <div class="card-subtitle">L4 distribution (24h)</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="protoChart"></canvas></div>
+                    <div class="breakdown-legend" id="protoLegend"></div>
+                </div>
+            </div>
+
+            <div class="breakdown-card" id="countrySection">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Countries</div>
+                        <div class="card-subtitle">By volume (24h)</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="countryChart"></canvas></div>
+                    <div class="breakdown-legend" id="countryLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="countryToggle" onclick="window._toggleDetail('country')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="countryDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>Country</th><th>IPs</th><th>Volume</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="countryTable">
+                            <tr><td colspan="5" class="empty-state">Waiting for GeoIP data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="breakdown-card" id="asnSection">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Autonomous Systems</div>
+                        <div class="card-subtitle">By volume (24h)</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="asnChart"></canvas></div>
+                    <div class="breakdown-legend" id="asnLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="asnToggle" onclick="window._toggleDetail('asn')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="asnDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>ASN</th><th>IPs</th><th>Volume</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="asnTable">
+                            <tr><td colspan="5" class="empty-state">Waiting for GeoIP data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Top 10 &mdash; Bandwidth</div>
+                        <div class="card-subtitle">Current rate</div>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>#</th><th>Host</th><th>Rate</th><th style="width:28%"></th></tr></thead>
+                    <tbody id="bwTable">
+                        <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Top 10 &mdash; Volume (24h)</div>
+                        <div class="card-subtitle">Total transferred</div>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>#</th><th>Host</th><th>Total</th><th style="width:28%"></th></tr></thead>
+                    <tbody id="volTable">
+                        <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        </div><!-- /tabTraffic -->
+
+        <div class="tab-panel" id="tabDns">
+        <div class="dns-section" id="dnsSection">
+            <div id="dnsNoData" style="text-align:center;padding:48px 16px;color:var(--text-2)">
+                <div style="font-size:14px;font-weight:500;margin-bottom:4px">AdGuard Home not connected</div>
+                <div style="font-size:12px">Configure with --adguard-url or ADGUARD_URL env var</div>
+            </div>
+            <div id="dnsHasData" style="display:none">
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">DNS &mdash; AdGuard Home</div>
+                        <div class="card-subtitle">Query statistics</div>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-2)" id="dnsStatus"></div>
+                </div>
+            </div>
+            <div class="dns-stats-row">
+                <div class="dns-stat-card">
+                    <div class="dns-stat-label">Total Queries</div>
+                    <div class="dns-stat-value" id="dnsTotalQueries">--</div>
+                </div>
+                <div class="dns-stat-card">
+                    <div class="dns-stat-label">Blocked</div>
+                    <div class="dns-stat-value blocked" id="dnsBlocked">--</div>
+                </div>
+                <div class="dns-stat-card">
+                    <div class="dns-stat-label">Block Rate</div>
+                    <div class="dns-stat-value pct" id="dnsBlockPct">--</div>
+                </div>
+                <div class="dns-stat-card">
+                    <div class="dns-stat-label">Avg Latency</div>
+                    <div class="dns-stat-value latency" id="dnsLatency">--</div>
+                </div>
+            </div>
+            <div class="dns-chart-row">
+                <div class="dns-chart-card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" style="font-size:12px">Queries</div>
+                        </div>
+                    </div>
+                    <div class="dns-chart-wrap"><canvas id="dnsQueriesChart"></canvas></div>
+                </div>
+                <div class="dns-chart-card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" style="font-size:12px">Blocked</div>
+                        </div>
+                    </div>
+                    <div class="dns-chart-wrap"><canvas id="dnsBlockedChart"></canvas></div>
+                </div>
+            </div>
+            <div class="breakdown-row">
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Top DNS Clients</div>
+                        <div class="card-subtitle">By query count</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="dnsClientsChart"></canvas></div>
+                    <div class="breakdown-legend" id="dnsClientsLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="dnsClientsToggle" onclick="window._toggleDetail('dnsClients')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="dnsClientsDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>Client</th><th>Queries</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="dnsClientsTable">
+                            <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Top Queried</div>
+                        <div class="card-subtitle">Domain distribution</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="dnsDomainsChart"></canvas></div>
+                    <div class="breakdown-legend" id="dnsDomainsLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="dnsDomainsToggle" onclick="window._toggleDetail('dnsDomains')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="dnsDomainsDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>Domain</th><th>Queries</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="dnsDomainsTable">
+                            <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Top Blocked</div>
+                        <div class="card-subtitle">Blocked domain distribution</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="dnsBlockedDomainsChart"></canvas></div>
+                    <div class="breakdown-legend" id="dnsBlockedDomainsLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="dnsBlockedDomainsToggle" onclick="window._toggleDetail('dnsBlockedDomains')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="dnsBlockedDomainsDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>Domain</th><th>Hits</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="dnsBlockedDomainsTable">
+                            <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            </div>
+            <div class="card" style="margin-top:16px">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Upstream DNS Servers</div>
+                        <div class="card-subtitle">Response count &amp; average latency</div>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>#</th><th>Server</th><th>Responses</th><th>Avg Latency</th><th style="width:22%"></th></tr></thead>
+                    <tbody id="dnsUpstreamTable">
+                        <tr><td colspan="5" class="empty-state">Waiting for data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            </div><!-- /dnsHasData -->
+        </div>
+        </div><!-- /tabDns -->
+
+        <div class="tab-panel" id="tabWifi">
+        <div id="wifiNoData" style="text-align:center;padding:48px 16px;color:var(--text-2)">
+            <div style="font-size:14px;font-weight:500;margin-bottom:4px">UniFi controller not connected</div>
+            <div style="font-size:12px">Configure with --unifi-url or UNIFI_URL env var</div>
+        </div>
+        <div id="wifiHasData" style="display:none">
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">WiFi &mdash; UniFi</div>
+                        <div class="card-subtitle">Access points &amp; clients</div>
+                    </div>
+                </div>
+            </div>
+            <div class="wifi-stats-row">
+                <div class="wifi-stat-card">
+                    <div class="wifi-stat-label">Access Points</div>
+                    <div class="wifi-stat-value ap" id="wifiTotalAPs">--</div>
+                </div>
+                <div class="wifi-stat-card">
+                    <div class="wifi-stat-label">Total Clients</div>
+                    <div class="wifi-stat-value clients" id="wifiTotalClients">--</div>
+                </div>
+                <div class="wifi-stat-card">
+                    <div class="wifi-stat-label">SSIDs</div>
+                    <div class="wifi-stat-value ssids" id="wifiTotalSSIDs">--</div>
+                </div>
+            </div>
+            <div class="breakdown-row">
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Clients per AP</div>
+                        <div class="card-subtitle">Active wireless clients by access point</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="apClientsChart"></canvas></div>
+                    <div class="breakdown-legend" id="apClientsLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="apClientsToggle" onclick="window._toggleDetail('apClients')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="apClientsDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>Access Point</th><th>Clients</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="apClientsTable">
+                            <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Traffic per AP</div>
+                        <div class="card-subtitle">Total bytes by access point</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="apTrafficChart"></canvas></div>
+                    <div class="breakdown-legend" id="apTrafficLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="apTrafficToggle" onclick="window._toggleDetail('apTraffic')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="apTrafficDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>Access Point</th><th>RX</th><th>TX</th><th>RX Rate</th><th>TX Rate</th><th style="width:16%"></th></tr></thead>
+                        <tbody id="apTrafficTable">
+                            <tr><td colspan="7" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Clients per SSID</div>
+                        <div class="card-subtitle">Active wireless clients</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="ssidChart"></canvas></div>
+                    <div class="breakdown-legend" id="ssidLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="ssidToggle" onclick="window._toggleDetail('ssid')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="ssidDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>SSID</th><th>Clients</th><th style="width:28%"></th></tr></thead>
+                        <tbody id="wifiSSIDTable">
+                            <tr><td colspan="4" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="breakdown-card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Traffic per SSID</div>
+                        <div class="card-subtitle">Total bytes by network</div>
+                    </div>
+                </div>
+                <div class="breakdown-chart-body">
+                    <div class="breakdown-chart-wrap"><canvas id="ssidTrafficChart"></canvas></div>
+                    <div class="breakdown-legend" id="ssidTrafficLegend"></div>
+                </div>
+                <div class="breakdown-toggle" id="ssidTrafficToggle" onclick="window._toggleDetail('ssidTraffic')">
+                    <span>Show details</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="breakdown-detail" id="ssidTrafficDetail">
+                    <table>
+                        <thead><tr><th>#</th><th>SSID</th><th>RX</th><th>TX</th><th>RX Rate</th><th>TX Rate</th><th style="width:16%"></th></tr></thead>
+                        <tbody id="ssidTrafficTable">
+                            <tr><td colspan="7" class="empty-state">Waiting for data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            </div>
+
+            <div class="wifi-ap-cards" id="wifiAPCards">
+                <div class="empty-state">Waiting for data</div>
+            </div>
+
+            <div class="card" style="margin-top:16px">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Client Traffic</div>
+                        <div class="card-subtitle">Per-client wireless traffic &amp; signal</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <input type="text" id="wifiClientSearch" placeholder="Filter clients…" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text-1);font-size:12px;width:180px;outline:none">
+                        <select id="wifiClientSort" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text-1);font-size:12px;outline:none">
+                            <option value="traffic">Sort: Traffic</option>
+                            <option value="rate">Sort: Rate</option>
+                            <option value="name">Sort: Name</option>
+                            <option value="signal">Sort: Signal</option>
+                        </select>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr>
+                        <th>#</th>
+                        <th>Client</th>
+                        <th>SSID</th>
+                        <th>AP</th>
+                        <th>Signal</th>
+                        <th>RX</th>
+                        <th>TX</th>
+                        <th>Rate ▼▲</th>
+                        <th style="width:14%"></th>
+                    </tr></thead>
+                    <tbody id="wifiClientTable">
+                        <tr><td colspan="9" class="empty-state">Waiting for data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </div><!-- /tabWifi -->
+
+        <div class="footer"><span id="clock"></span></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
