@@ -1,7 +1,9 @@
-name: Release
+name: Build & Release
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v*'
 
@@ -40,10 +42,17 @@ jobs:
         if: matrix.goarch == 'arm64'
         run: |
           sudo dpkg --add-architecture arm64
-          # Add arm64 sources
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list.d/*.list 2>/dev/null || true
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs) main restricted universe" | sudo tee /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs)-updates main restricted universe" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          # Pin existing sources to amd64 only (skip non-deb lines and third-party lists)
+          for f in /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] && sudo sed -i '/^deb /{/\[/!s|^deb |deb [arch=amd64] |}' "$f" 2>/dev/null || true
+          done
+          # Also fix the main sources list if it exists
+          [ -f /etc/apt/sources.list ] && sudo sed -i '/^deb /{/\[/!s|^deb |deb [arch=amd64] |}' /etc/apt/sources.list 2>/dev/null || true
+          # Add arm64 ports
+          cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64-ports.list
+deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs) main restricted universe
+deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs)-updates main restricted universe
+EOF
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libpcap-dev:arm64
 
@@ -170,8 +179,9 @@ jobs:
           name: openwrt-${{ matrix.arch }}
           path: ipk-out/*.ipk
 
-  # ─── GitHub Release ────────────────────────────────────────────────
+  # ─── GitHub Release (tags only) ────────────────────────────────────
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [linux-packages, openwrt]
     runs-on: ubuntu-latest
     steps:
