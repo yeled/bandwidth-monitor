@@ -4,3 +4,16 @@ package-lock.json
 scripts/
 package.json
 .DS_Store
+
+# Build artifacts
+bandwidth-monitor
+*.deb
+*.rpm
+*.ipk
+
+# Runtime / secrets
+*.env
+.env
+
+# GeoIP databases
+*.mmdb

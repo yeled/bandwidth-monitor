@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.23'
+
+jobs:
+  # ─── Linux deb/rpm (amd64 + arm64) ────────────────────────────────
+  linux-packages:
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            pkg_arch: amd64
+            cc: gcc
+            libpcap_pkg: libpcap-dev
+          - goos: linux
+            goarch: arm64
+            pkg_arch: arm64
+            cc: aarch64-linux-gnu-gcc
+            libpcap_pkg: libpcap-dev:arm64
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install cross-compilation tools
+        if: matrix.goarch == 'arm64'
+        run: |
+          sudo dpkg --add-architecture arm64
+          # Add arm64 sources
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list.d/*.list 2>/dev/null || true
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs) main restricted universe" | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs)-updates main restricted universe" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libpcap-dev:arm64
+
+      - name: Install libpcap (native)
+        if: matrix.goarch == 'amd64'
+        run: sudo apt-get install -y libpcap-dev
+
+      - name: Install nfpm
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.cc }}
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o bandwidth-monitor .
+
+      - name: Prepare packaging service file
+        run: |
+          sed -e 's|/opt/bandwidth-monitor/bandwidth-monitor|/usr/bin/bandwidth-monitor|' \
+              -e 's|EnvironmentFile=/opt/bandwidth-monitor/.env|EnvironmentFile=-/etc/bandwidth-monitor/env|' \
+              -e 's|WorkingDirectory=/opt/bandwidth-monitor|WorkingDirectory=/var/lib/bandwidth-monitor|' \
+              -e 's|ReadOnlyPaths=/opt/bandwidth-monitor||' \
+              bandwidth-monitor.service > bandwidth-monitor-pkg.service
+
+      - name: Build deb
+        env:
+          VERSION: ${{ github.ref_name }}
+          GOARCH: ${{ matrix.pkg_arch }}
+        run: |
+          VERSION="${VERSION#v}"
+          nfpm package -p deb -f nfpm.yaml
+
+      - name: Build rpm
+        env:
+          VERSION: ${{ github.ref_name }}
+          GOARCH: ${{ matrix.pkg_arch }}
+        run: |
+          VERSION="${VERSION#v}"
+          nfpm package -p rpm -f nfpm.yaml
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.goarch }}
+          path: |
+            *.deb
+            *.rpm
+
+  # ─── OpenWrt (multiple targets) ────────────────────────────────────
+  openwrt:
+    strategy:
+      matrix:
+        include:
+          - sdk_url_suffix: x86/64
+            sdk_pattern: "openwrt-sdk-*-x86-64_*"
+            arch: x86_64
+          - sdk_url_suffix: rockchip/armv8
+            sdk_pattern: "openwrt-sdk-*-rockchip-armv8_*"
+            arch: aarch64_generic
+          - sdk_url_suffix: ath79/generic
+            sdk_pattern: "openwrt-sdk-*-ath79-generic_*"
+            arch: mips_24kc
+          - sdk_url_suffix: ramips/mt7621
+            sdk_pattern: "openwrt-sdk-*-ramips-mt7621_*"
+            arch: mipsel_24kc
+          - sdk_url_suffix: mediatek/filogic
+            sdk_pattern: "openwrt-sdk-*-mediatek-filogic_*"
+            arch: aarch64_cortex-a53
+
+    runs-on: ubuntu-latest
+    env:
+      OPENWRT_RELEASE: "23.05.5"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-distutils python3-setuptools rsync swig unzip zlib1g-dev \
+            file wget
+
+      - name: Download and extract OpenWrt SDK
+        run: |
+          SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_RELEASE }}/targets/${{ matrix.sdk_url_suffix }}"
+          SDK_FILE=$(curl -sf "$SDK_URL/sha256sums" | grep 'openwrt-sdk-' | grep -oP 'openwrt-sdk-[^\s*]+\.tar\.\w+' | head -1)
+          echo "Downloading $SDK_URL/$SDK_FILE"
+          wget -q "$SDK_URL/$SDK_FILE"
+          tar xf "$SDK_FILE"
+          echo "SDK_DIR=$(ls -d openwrt-sdk-* | head -1)" >> $GITHUB_ENV
+
+      - name: Set up package feed
+        run: |
+          cd "$SDK_DIR"
+          echo "src-link bwmon ${{ github.workspace }}/packaging" >> feeds.conf.default
+          # Rename openwrt-Makefile to Makefile in a feed-compatible structure
+          mkdir -p ${{ github.workspace }}/packaging/bandwidth-monitor/files
+          cp ${{ github.workspace }}/packaging/openwrt-Makefile ${{ github.workspace }}/packaging/bandwidth-monitor/Makefile
+          cp ${{ github.workspace }}/packaging/openwrt-files/* ${{ github.workspace }}/packaging/bandwidth-monitor/files/
+          ./scripts/feeds update -a
+          ./scripts/feeds install bandwidth-monitor
+
+      - name: Build OpenWrt package
+        run: |
+          cd "$SDK_DIR"
+          make package/bandwidth-monitor/compile V=s -j$(nproc) \
+            CONFIG_PACKAGE_bandwidth-monitor=y
+
+      - name: Collect ipk
+        run: |
+          mkdir -p ipk-out
+          find "$SDK_DIR/bin" -name 'bandwidth-monitor*.ipk' -exec cp {} ipk-out/ \;
+          ls -lh ipk-out/
+
+      - name: Upload OpenWrt package
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-${{ matrix.arch }}
+          path: ipk-out/*.ipk
+
+  # ─── GitHub Release ────────────────────────────────────────────────
+  release:
+    needs: [linux-packages, openwrt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.ipk

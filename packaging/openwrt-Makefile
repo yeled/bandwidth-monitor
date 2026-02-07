@@ -1,0 +1,51 @@
+include $(TOPDIR)/rules.mk
+
+PKG_NAME:=bandwidth-monitor
+PKG_VERSION:=$(shell git describe --tags --always 2>/dev/null || echo 0.0.1)
+PKG_RELEASE:=1
+
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://github.com/awlx/bandwidth-monitor.git
+PKG_SOURCE_VERSION:=HEAD
+PKG_MIRROR_HASH:=skip
+
+PKG_BUILD_DEPENDS:=golang/host
+PKG_BUILD_PARALLEL:=1
+PKG_BUILD_FLAGS:=no-mips16
+
+GO_PKG:=bandwidth-monitor
+
+include $(INCLUDE_DIR)/package.mk
+include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
+
+define Package/bandwidth-monitor
+  SECTION:=net
+  CATEGORY:=Network
+  SUBMENU:=Web Servers/Proxies
+  TITLE:=Real-time network monitoring dashboard
+  URL:=https://github.com/awlx/bandwidth-monitor
+  DEPENDS:=$(GO_ARCH_DEPENDS) +libpcap
+endef
+
+define Package/bandwidth-monitor/description
+  A real-time network monitoring dashboard with an embedded web UI.
+  Features live interface stats, top talkers via packet capture,
+  AdGuard Home DNS integration, UniFi WiFi monitoring, and GeoIP enrichment.
+endef
+
+define Package/bandwidth-monitor/conffiles
+/etc/bandwidth-monitor/env
+endef
+
+define Package/bandwidth-monitor/install
+	$(call GoPackage/Package/Install/Bin,$(1))
+
+	$(INSTALL_DIR) $(1)/etc/bandwidth-monitor
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/env.example $(1)/etc/bandwidth-monitor/env
+
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/bandwidth-monitor.init $(1)/etc/init.d/bandwidth-monitor
+endef
+
+$(eval $(call GoBinPackage,bandwidth-monitor))
+$(eval $(call BuildPackage,bandwidth-monitor))
