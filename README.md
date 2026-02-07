@@ -198,6 +198,31 @@ Makefile                 → build, install, GeoIP download targets
 | `/api/summary` | GET | Compact summary for menu bar clients |
 | `/api/ws` | WS | WebSocket — pushes all data every second |
 
+## Screenshots
+
+<table>
+  <tr>
+    <th>Traffic (Light)</th>
+    <th>DNS (Light)</th>
+    <th>WiFi (Light)</th>
+  </tr>
+  <tr>
+    <td><img src="docs/traffic-light.png" width="300" alt="Traffic (light)" /></td>
+    <td><img src="docs/dns-light.png" width="300" alt="DNS (light)" /></td>
+    <td><img src="docs/wifi-light.png" width="300" alt="WiFi (light)" /></td>
+  </tr>
+  <tr>
+    <th>Traffic (Dark)</th>
+    <th>DNS (Dark)</th>
+    <th>WiFi (Dark)</th>
+  </tr>
+  <tr>
+    <td><img src="docs/traffic-dark.png" width="300" alt="Traffic (dark)" /></td>
+    <td><img src="docs/dns-dark.png" width="300" alt="DNS (dark)" /></td>
+    <td><img src="docs/wifi-dark.png" width="300" alt="WiFi (dark)" /></td>
+  </tr>
+</table>
+
 ## Notes
 
 - **Interface stats** work without root — they just read `/proc/net/dev`
