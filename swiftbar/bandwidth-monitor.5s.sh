@@ -9,21 +9,51 @@
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 
 # ── Configuration ──
-SERVER="${BW_SERVER:-http://localhost:8080}"
+# Comma-separated list of servers to try in order (first reachable wins)
+SERVERS="${BW_SERVERS:-${BW_SERVER:-http://localhost:8080}}"
+# Default preferred interface (used if no per-server override matches)
 PREFER_IFACE="${BW_PREFER_IFACE:-}"
+# Per-server preferred interface overrides: "url=iface,url=iface"
+# Example: BW_PREFER_IFACE_MAP="http://192.168.1.1:8080=eth0,http://192.168.0.242:8080=ppp0"
+PREFER_IFACE_MAP="${BW_PREFER_IFACE_MAP:-}"
 # ────────────────────
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-DATA=$(curl -sf --max-time 1 -w '' "${SERVER}/api/summary" 2>/dev/null)
+# Try each server until one responds
+SERVER=""
+DATA=""
+IFS=',' read -ra SERVER_LIST <<< "$SERVERS"
+for s in "${SERVER_LIST[@]}"; do
+    s=$(echo "$s" | xargs)  # trim whitespace
+    DATA=$(curl -sf --max-time 1 -w '' "${s}/api/summary" 2>/dev/null)
+    if [ -n "$DATA" ]; then
+        SERVER="$s"
+        break
+    fi
+done
+
+# Resolve per-server preferred interface
+if [ -n "$PREFER_IFACE_MAP" ]; then
+    IFS=',' read -ra IFACE_PAIRS <<< "$PREFER_IFACE_MAP"
+    for pair in "${IFACE_PAIRS[@]}"; do
+        pair=$(echo "$pair" | xargs)
+        map_server="${pair%%=*}"
+        map_iface="${pair#*=}"
+        if [ "$map_server" = "$SERVER" ]; then
+            PREFER_IFACE="$map_iface"
+            break
+        fi
+    done
+fi
 
 if [ -z "$DATA" ]; then
     echo "⚡ --"
     echo "---"
     echo "Server unreachable | color=red"
-    echo "${SERVER} | color=#888888 size=11"
+    for s in "${SERVER_LIST[@]}"; do echo "  $(echo "$s" | xargs) | color=#888888 size=11"; done
     echo "---"
-    echo "Open Dashboard | href=${SERVER}"
+    echo "Open Dashboard | href=${SERVER_LIST[0]}"
     exit 0
 fi
 

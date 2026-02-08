@@ -102,6 +102,59 @@ The DNS and WiFi tabs are only shown when their respective URLs are configured.
 
 ## Installation
 
+### Pre-built packages
+
+Pre-built packages are available from [GitHub Releases](https://github.com/awlx/bandwidth-monitor/releases) for:
+
+| Format | Architectures | Platform |
+|--------|--------------|----------|
+| `.deb` | amd64, arm64 | Debian, Ubuntu, Raspbian |
+| `.rpm` | amd64, arm64 | Fedora, RHEL, AlmaLinux |
+| `.ipk` | x86_64, aarch64, mips_24kc, mipsel_24kc | OpenWrt 23.05 (stable) |
+| `.apk` | x86_64, aarch64 | OpenWrt snapshot (nightly) |
+
+#### Debian / Ubuntu
+
+```bash
+sudo dpkg -i bandwidth-monitor_*.deb
+sudo vi /etc/bandwidth-monitor/env
+sudo systemctl enable --now bandwidth-monitor
+```
+
+#### RHEL / Fedora
+
+```bash
+sudo rpm -i bandwidth-monitor-*.rpm
+sudo vi /etc/bandwidth-monitor/env
+sudo systemctl enable --now bandwidth-monitor
+```
+
+#### OpenWrt (stable, opkg)
+
+```bash
+opkg update && opkg install libpcap
+opkg install /tmp/bandwidth-monitor_*.ipk
+vi /etc/bandwidth-monitor/env
+/etc/init.d/bandwidth-monitor enable
+/etc/init.d/bandwidth-monitor start
+```
+
+Optional GeoIP databases:
+```bash
+scp GeoLite2-Country.mmdb GeoLite2-ASN.mmdb root@router:/etc/bandwidth-monitor/
+/etc/init.d/bandwidth-monitor restart
+```
+
+#### OpenWrt (snapshot, apk)
+
+```bash
+apk update && apk add libpcap
+apk add --allow-untrusted /tmp/bandwidth-monitor-*.apk
+vi /etc/bandwidth-monitor/env
+/etc/init.d/bandwidth-monitor enable
+/etc/init.d/bandwidth-monitor start
+```
+
 ### Using the Makefile
 
 ```bash
@@ -158,34 +211,50 @@ A [SwiftBar](https://github.com/swiftbar/SwiftBar) / [xbar](https://xbarapp.com/
 **Setup:**
 1. Copy `swiftbar/bandwidth-monitor.5s.sh` to your SwiftBar plugin directory
 2. Make it executable: `chmod +x bandwidth-monitor.5s.sh`
+3. Edit the defaults at the top of the script, or set environment variables
 
 **Configuration via environment variables:**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BW_SERVER` | `http://localhost:8080` | Bandwidth Monitor server URL |
-| `BW_PREFER_IFACE` | *(auto)* | Preferred interface for menu bar title (e.g. `ppp0`) |
+| `BW_SERVERS` | `http://localhost:8080` | Comma-separated list of servers to try in order (first reachable wins) |
+| `BW_SERVER` | `http://localhost:8080` | Single server URL (used if `BW_SERVERS` is not set) |
+| `BW_PREFER_IFACE` | *(auto)* | Default preferred interface for menu bar title (e.g. `ppp0`) |
+| `BW_PREFER_IFACE_MAP` | *(none)* | Per-server interface override: `url=iface,url=iface` |
 
-The plugin shows a 🔒 icon when VPN routing is active.
+**Multi-server example** (edit the defaults in the script):
+```bash
+SERVERS="http://192.168.1.1:8080, http://198.51.100.1:8080"
+PREFER_IFACE_MAP="http://192.168.1.1:8080=eth0,http://198.51.100.1:8080=ppp0"
+```
+
+The plugin tries each server in order with a 1-second timeout. The preferred interface is resolved per-server from the map. Shows a 🔒 icon when VPN routing is active.
 
 ## Architecture
 
 ```
-main.go                  → entry point, env config, wires all components
-collector/               → reads /proc/net/dev, computes rates, 24h history, VPN routing
-talkers/                 → pcap packet capture, per-IP tracking, 1-min bucket aggregation
-handler/                 → HTTP REST API + WebSocket handler
-adguard/                 → AdGuard Home API client (stats, top clients/domains)
-unifi/                   → UniFi controller API client (APs, SSIDs, clients, live rates)
-geoip/                   → MaxMind MMDB GeoIP lookups (country, ASN)
+main.go                   → entry point, env config, wires all components
+collector/                → reads /proc/net/dev, computes rates, 24h history, VPN routing
+talkers/                  → pcap packet capture, per-IP tracking, 1-min bucket aggregation
+handler/                  → HTTP REST API + WebSocket handler
+adguard/                  → AdGuard Home API client (stats, top clients/domains)
+unifi/                    → UniFi controller API client (APs, SSIDs, clients, live rates)
+geoip/                    → MaxMind MMDB GeoIP lookups (country, ASN)
 static/
-  index.html             → HTML shell with three tabs
-  app.js                 → all frontend JavaScript (charts, tables, WebSocket)
-  style.css              → full stylesheet (dark/light themes, glassmorphism)
-swiftbar/                → macOS menu bar plugin
-env.example              → example environment configuration
+  index.html              → HTML shell with three tabs
+  app.js                  → all frontend JavaScript (charts, tables, WebSocket)
+  style.css               → full stylesheet (dark/light themes, glassmorphism)
+swiftbar/                 → macOS menu bar plugin
+packaging/
+  openwrt-Makefile        → OpenWrt package definition
+  openwrt-files/          → procd init script for OpenWrt
+  postinstall.sh          → deb/rpm post-install script
+  preremove.sh            → deb/rpm pre-remove script
+nfpm.yaml                 → deb/rpm packaging config (nfpm)
+.github/workflows/        → CI: builds deb, rpm, ipk, apk on push & tag
+env.example               → example environment configuration
 bandwidth-monitor.service → systemd unit file
-Makefile                 → build, install, GeoIP download targets
+Makefile                  → build, install, GeoIP download targets
 ```
 
 ## API Endpoints
