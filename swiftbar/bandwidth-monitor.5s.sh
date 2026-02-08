@@ -14,7 +14,7 @@ SERVERS="${BW_SERVERS:-${BW_SERVER:-http://localhost:8080}}"
 # Default preferred interface (used if no per-server override matches)
 PREFER_IFACE="${BW_PREFER_IFACE:-}"
 # Per-server preferred interface overrides: "url=iface,url=iface"
-# Example: BW_PREFER_IFACE_MAP="http://192.168.1.1:8080=eth0,http://192.168.0.242:8080=ppp0"
+# Example: BW_PREFER_IFACE_MAP="http://198.51.100.1:8080=eth0,http://203.0.113.1:8080=ppp0"
 PREFER_IFACE_MAP="${BW_PREFER_IFACE_MAP:-}"
 # ────────────────────
 

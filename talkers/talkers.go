@@ -34,7 +34,11 @@ type TalkerStat struct {
 	ASN         uint    `json:"asn,omitempty"`
 	ASOrg       string  `json:"as_org,omitempty"`
 	TotalBytes  uint64  `json:"total_bytes"`
+	RxBytes     uint64  `json:"rx_bytes"`
+	TxBytes     uint64  `json:"tx_bytes"`
 	RateBytes   float64 `json:"rate_bytes"`
+	RxRate      float64 `json:"rx_rate"`
+	TxRate      float64 `json:"tx_rate"`
 	Packets     uint64  `json:"packets"`
 }
 
@@ -47,12 +51,15 @@ type bucket struct {
 
 type hostAccum struct {
 	bytes   uint64
+	rxBytes uint64 // towards local nets (download)
+	txBytes uint64 // from local nets (upload)
 	packets uint64
 }
 
 type Tracker struct {
 	device      string
 	promiscuous bool
+	localNets   []*net.IPNet // LOCAL_NETS for SPAN port direction detection
 	mu          sync.RWMutex
 	buckets     []*bucket
 	current     *bucket
@@ -62,10 +69,11 @@ type Tracker struct {
 	geoDB       *geoip.DB
 }
 
-func New(device string, promiscuous bool, geoDB *geoip.DB) *Tracker {
+func New(device string, promiscuous bool, localNets []*net.IPNet, geoDB *geoip.DB) *Tracker {
 	return &Tracker{
 		device:      device,
 		promiscuous: promiscuous,
+		localNets:   localNets,
 		buckets:     make([]*bucket, 0, 1440),
 		stopCh:      make(chan struct{}),
 		dnsCache:    make(map[string]string),
@@ -116,6 +124,8 @@ func (t *Tracker) TopByVolume(n int) []TalkerStat {
 				totals[ip] = &TalkerStat{IP: ip}
 			}
 			totals[ip].TotalBytes += acc.bytes
+			totals[ip].RxBytes += acc.rxBytes
+			totals[ip].TxBytes += acc.txBytes
 			totals[ip].Packets += acc.packets
 		}
 	}
@@ -125,6 +135,8 @@ func (t *Tracker) TopByVolume(n int) []TalkerStat {
 				totals[ip] = &TalkerStat{IP: ip}
 			}
 			totals[ip].TotalBytes += acc.bytes
+			totals[ip].RxBytes += acc.rxBytes
+			totals[ip].TxBytes += acc.txBytes
 			totals[ip].Packets += acc.packets
 		}
 	}
@@ -163,7 +175,11 @@ func (t *Tracker) TopByBandwidth(n int) []TalkerStat {
 			IP:         ip,
 			Hostname:   t.resolveIP(ip),
 			TotalBytes: acc.bytes,
+			RxBytes:    acc.rxBytes,
+			TxBytes:    acc.txBytes,
 			RateBytes:  float64(acc.bytes) / elapsed,
+			RxRate:     float64(acc.rxBytes) / elapsed,
+			TxRate:     float64(acc.txBytes) / elapsed,
 			Packets:    acc.packets,
 		}
 		t.enrichGeo(&s)
@@ -281,6 +297,23 @@ func (t *Tracker) processPacket(pkt gopacket.Packet) {
 		}
 		t.current.hosts[ip].bytes += pktLen
 		t.current.hosts[ip].packets++
+	}
+
+	// Direction detection for SPAN/mirror port using LOCAL_NETS
+	if len(t.localNets) > 0 {
+		srcLocal := t.isLocalNet(srcIP)
+		dstLocal := t.isLocalNet(dstIP)
+		if srcLocal && !dstLocal {
+			// Local → Remote = upload (TX from local perspective)
+			if h, ok := t.current.hosts[dstIP]; ok {
+				h.txBytes += pktLen
+			}
+		} else if !srcLocal && dstLocal {
+			// Remote → Local = download (RX from local perspective)
+			if h, ok := t.current.hosts[srcIP]; ok {
+				h.rxBytes += pktLen
+			}
+		}
 	}
 
 	t.current.protoBytes[proto] += pktLen
@@ -568,6 +601,22 @@ func isPrivateIP(ipStr string) bool {
 	}
 	for _, r := range privateRanges {
 		if r.network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Tracker) isLocalNet(ipStr string) bool {
+	if len(t.localNets) == 0 {
+		return false
+	}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range t.localNets {
+		if n.Contains(ip) {
 			return true
 		}
 	}
