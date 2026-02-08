@@ -161,6 +161,7 @@ func (c *Client) GetSummary() *dns.Summary {
 	}
 
 	return &dns.Summary{
+		ProviderName:   "NextDNS",
 		TotalQueries:   totalQueries,
 		BlockedTotal:   blockedTotal,
 		BlockedPercent: blockedPct,

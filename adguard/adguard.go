@@ -137,6 +137,7 @@ func (c *Client) GetSummary() *dns.Summary {
 	}
 
 	sum := &dns.Summary{
+		ProviderName:   "AdGuard Home",
 		TotalQueries:   s.NumDNSQueries,
 		BlockedTotal:   blockedTotal,
 		BlockedPercent: blockedPct,

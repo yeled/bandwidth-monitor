@@ -11,6 +11,7 @@ type Provider interface {
 // Summary is the common DNS stats format sent to the frontend.
 // Both adguard and nextdns produce this same shape.
 type Summary struct {
+	ProviderName   string  `json:"provider_name"`
 	TotalQueries   int     `json:"total_queries"`
 	BlockedTotal   int     `json:"blocked_total"`
 	BlockedPercent float64 `json:"blocked_pct"`
