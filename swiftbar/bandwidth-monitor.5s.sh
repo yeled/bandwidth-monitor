@@ -20,12 +20,34 @@ PREFER_IFACE_MAP="${BW_PREFER_IFACE_MAP:-}"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-# Try each server until one responds
+# Get local IP addresses to determine which subnet we're on
+LOCAL_IPS=$(ifconfig 2>/dev/null | grep 'inet ' | awk '{print $2}' | grep -v '^127\.')
+
+# Sort server list: servers on a reachable subnet first
+IFS=',' read -ra SERVER_LIST <<< "$SERVERS"
+SORTED_SERVERS=()
+REMAINING_SERVERS=()
+for s in "${SERVER_LIST[@]}"; do
+    s=$(echo "$s" | xargs)
+    # Extract IP from URL (http://1.2.3.4:8080 -> 1.2.3.4)
+    srv_ip=$(echo "$s" | sed -E 's|https?://([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+(:[0-9]+)?/?.*|\1|')
+    matched=false
+    for lip in $LOCAL_IPS; do
+        local_prefix=$(echo "$lip" | sed -E 's|([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+|\1|')
+        if [ "$srv_ip" = "$local_prefix" ]; then
+            SORTED_SERVERS+=("$s")
+            matched=true
+            break
+        fi
+    done
+    $matched || REMAINING_SERVERS+=("$s")
+done
+SORTED_SERVERS+=("${REMAINING_SERVERS[@]}")
+
+# Try each server in subnet-priority order
 SERVER=""
 DATA=""
-IFS=',' read -ra SERVER_LIST <<< "$SERVERS"
-for s in "${SERVER_LIST[@]}"; do
-    s=$(echo "$s" | xargs)  # trim whitespace
+for s in "${SORTED_SERVERS[@]}"; do
     DATA=$(curl -sf --max-time 1 -w '' "${s}/api/summary" 2>/dev/null)
     if [ -n "$DATA" ]; then
         SERVER="$s"
