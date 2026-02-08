@@ -389,14 +389,14 @@
             h += '<td>' + host + '</td>';
             if (hasDirection) {
                 if (isRate) {
-                    h += '<td style="white-space:nowrap;color:var(--rx)">' + formatRate(t.rx_rate || 0) + '</td>';
-                    h += '<td style="white-space:nowrap;color:var(--tx)">' + formatRate(t.tx_rate || 0) + '</td>';
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--rx)">' + formatRate(t.rx_rate || 0) + '</td>';
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--tx)">' + formatRate(t.tx_rate || 0) + '</td>';
                 } else {
-                    h += '<td style="white-space:nowrap;color:var(--rx)">' + formatBytes(t.rx_bytes || 0) + '</td>';
-                    h += '<td style="white-space:nowrap;color:var(--tx)">' + formatBytes(t.tx_bytes || 0) + '</td>';
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--rx)">' + formatBytes(t.rx_bytes || 0) + '</td>';
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--tx)">' + formatBytes(t.tx_bytes || 0) + '</td>';
                 }
             }
-            h += '<td style="white-space:nowrap">' + fmt(t[vk]) + '</td>';
+            h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums">' + fmt(t[vk]) + '</td>';
             h += '<td class="bar-cell"><div class="bar-bg"></div><div class="bar-fill ' + cls + '" style="width:' + pct + '%"></div></td></tr>';
         });
 
@@ -404,11 +404,7 @@
         var thead = tb.parentElement.querySelector('thead tr');
         if (thead) {
             if (hasDirection) {
-                if (isRate) {
-                    thead.innerHTML = '<th>#</th><th>Host</th><th>RX</th><th>TX</th><th>Total</th><th style="width:22%"></th>';
-                } else {
-                    thead.innerHTML = '<th>#</th><th>Host</th><th>RX</th><th>TX</th><th>Total</th><th style="width:22%"></th>';
-                }
+                thead.innerHTML = '<th>#</th><th>Host</th><th style="width:12%">RX</th><th style="width:12%">TX</th><th style="width:12%">Total</th><th style="width:18%"></th>';
             } else {
                 thead.innerHTML = '<th>#</th><th>Host</th><th>' + (isRate ? 'Rate' : 'Total') + '</th><th style="width:28%"></th>';
             }

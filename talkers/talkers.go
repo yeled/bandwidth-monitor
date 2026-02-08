@@ -289,7 +289,7 @@ func (t *Tracker) processPacket(pkt gopacket.Packet) {
 	}
 
 	for _, ip := range []string{srcIP, dstIP} {
-		if isPrivateIP(ip) {
+		if isPrivateIP(ip) || t.isLocalNet(ip) {
 			continue
 		}
 		if _, ok := t.current.hosts[ip]; !ok {
