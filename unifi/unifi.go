@@ -25,6 +25,10 @@ type Client struct {
 	summary    *Summary
 	stopCh     chan struct{}
 
+	// API variant detection
+	unifiOS  bool // true = UDM/UDR/CloudKey Gen2+, false = legacy controller
+	detected bool // true once API variant has been determined
+
 	// rate tracking
 	lastPoll time.Time
 	prevAP   map[string]byteSnap // keyed by MAC
@@ -193,7 +197,41 @@ func (c *Client) login() error {
 		"username": c.user,
 		"password": c.pass,
 	})
-	url := c.baseURL + "/api/login"
+
+	// Auto-detect API variant on first login
+	if !c.detected {
+		// Try UniFi OS first (UDM/UDR/CloudKey Gen2+)
+		url := c.baseURL + "/api/auth/login"
+		resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(payload))
+		if err == nil {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				c.unifiOS = true
+				c.detected = true
+				log.Printf("unifi: detected UniFi OS controller")
+				return nil
+			}
+		}
+		// Fall back to legacy controller
+		url = c.baseURL + "/api/login"
+		resp, err = c.httpClient.Post(url, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			return fmt.Errorf("POST %s: %w", url, err)
+		}
+		defer resp.Body.Close()
+		io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("login returned status %d", resp.StatusCode)
+		}
+		c.unifiOS = false
+		c.detected = true
+		log.Printf("unifi: detected legacy controller")
+		return nil
+	}
+
+	// Subsequent logins use the detected variant
+	url := c.loginURL()
 	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", url, err)
@@ -204,6 +242,20 @@ func (c *Client) login() error {
 		return fmt.Errorf("login returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *Client) loginURL() string {
+	if c.unifiOS {
+		return c.baseURL + "/api/auth/login"
+	}
+	return c.baseURL + "/api/login"
+}
+
+func (c *Client) apiPrefix() string {
+	if c.unifiOS {
+		return c.baseURL + "/proxy/network/api/s/" + c.site
+	}
+	return c.baseURL + "/api/s/" + c.site
 }
 
 type deviceResponse struct {
@@ -251,7 +303,7 @@ type rawClient struct {
 }
 
 func (c *Client) fetchDevices() ([]rawDevice, error) {
-	url := c.baseURL + "/api/s/" + c.site + "/stat/device"
+	url := c.apiPrefix() + "/stat/device"
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
@@ -269,7 +321,7 @@ func (c *Client) fetchDevices() ([]rawDevice, error) {
 }
 
 func (c *Client) fetchClients() ([]rawClient, error) {
-	url := c.baseURL + "/api/s/" + c.site + "/stat/sta"
+	url := c.apiPrefix() + "/stat/sta"
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
@@ -421,5 +473,9 @@ func (c *Client) buildSummary(devices []rawDevice, clients []rawClient, dt float
 }
 
 func (c *Client) String() string {
-	return fmt.Sprintf("UniFi[%s/s/%s]", c.baseURL, c.site)
+	variant := "legacy"
+	if c.unifiOS {
+		variant = "unifi-os"
+	}
+	return fmt.Sprintf("UniFi[%s/s/%s (%s)]", c.baseURL, c.site, variant)
 }

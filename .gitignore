@@ -17,3 +17,6 @@ bandwidth-monitor
 
 # GeoIP databases
 *.mmdb
+
+# Personal scripts
+99-vpn-status
