@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"bandwidth-monitor/adguard"
 	"bandwidth-monitor/collector"
+	"bandwidth-monitor/dns"
 	"bandwidth-monitor/talkers"
 	"bandwidth-monitor/unifi"
 
@@ -46,14 +46,14 @@ func TopTalkersVolume(t *talkers.Tracker) http.HandlerFunc {
 	}
 }
 
-func DNSSummary(ag *adguard.Client) http.HandlerFunc {
+func DNSSummary(dp dns.Provider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if ag == nil {
+		if dp == nil {
 			w.Write([]byte("null"))
 			return
 		}
-		json.NewEncoder(w).Encode(ag.GetSummary())
+		json.NewEncoder(w).Encode(dp.GetSummary())
 	}
 }
 
@@ -69,7 +69,7 @@ func WiFiSummary(uf *unifi.Client) http.HandlerFunc {
 }
 
 // MenuBarSummary returns a compact JSON snapshot for menu-bar widgets.
-func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, ag *adguard.Client, uf *unifi.Client) http.HandlerFunc {
+func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, dp dns.Provider, uf *unifi.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		type ifaceBrief struct {
@@ -112,8 +112,8 @@ func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, ag *adguard.Clie
 				out.VPNIface = iface.Name
 			}
 		}
-		if ag != nil {
-			if ds := ag.GetSummary(); ds != nil {
+		if dp != nil {
+			if ds := dp.GetSummary(); ds != nil {
 				out.DNS = &dnsBrief{
 					TotalQueries: ds.TotalQueries,
 					Blocked:      ds.BlockedTotal,
@@ -139,7 +139,7 @@ func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, ag *adguard.Clie
 	}
 }
 
-func WebSocket(c *collector.Collector, t *talkers.Tracker, ag *adguard.Client, uf *unifi.Client) http.HandlerFunc {
+func WebSocket(c *collector.Collector, t *talkers.Tracker, dp dns.Provider, uf *unifi.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -192,8 +192,8 @@ func WebSocket(c *collector.Collector, t *talkers.Tracker, ag *adguard.Client, u
 					"top_volume":    t.TopByVolume(10),
 					"timestamp":     time.Now().UnixMilli(),
 				}
-				if ag != nil {
-					payload["dns"] = ag.GetSummary()
+				if dp != nil {
+					payload["dns"] = dp.GetSummary()
 				}
 				if uf != nil {
 					payload["wifi"] = uf.GetSummary()
