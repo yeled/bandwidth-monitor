@@ -25,6 +25,12 @@ type Client struct {
 	summary    *Summary
 	stopCh     chan struct{}
 
+	// API variant detection
+	unifiOS   bool   // true = UDM/UDR/CloudKey Gen2+, false = legacy controller
+	detected  bool   // true once API variant has been determined
+	csrfToken string // X-CSRF-Token for UniFi OS
+	loggedIn  bool   // true if we have an active session
+
 	// rate tracking
 	lastPoll time.Time
 	prevAP   map[string]byteSnap // keyed by MAC
@@ -142,14 +148,27 @@ func (c *Client) Available() bool {
 }
 
 func (c *Client) poll() {
-	if err := c.login(); err != nil {
-		log.Printf("unifi: login failed: %v", err)
-		return
+	// Only login if we don't have a session yet
+	if !c.loggedIn {
+		if err := c.login(); err != nil {
+			log.Printf("unifi: login failed: %v", err)
+			return
+		}
 	}
 	devices, err := c.fetchDevices()
 	if err != nil {
-		log.Printf("unifi: fetch devices: %v", err)
-		return
+		// If auth error, re-login once and retry
+		log.Printf("unifi: fetch devices: %v (re-authenticating)", err)
+		c.loggedIn = false
+		if err := c.login(); err != nil {
+			log.Printf("unifi: re-login failed: %v", err)
+			return
+		}
+		devices, err = c.fetchDevices()
+		if err != nil {
+			log.Printf("unifi: fetch devices after re-login: %v", err)
+			return
+		}
 	}
 	clients, err := c.fetchClients()
 	if err != nil {
@@ -193,7 +212,44 @@ func (c *Client) login() error {
 		"username": c.user,
 		"password": c.pass,
 	})
-	url := c.baseURL + "/api/login"
+
+	// Auto-detect API variant on first login
+	if !c.detected {
+		// Try UniFi OS first (UDM/UDR/CloudKey Gen2+)
+		url := c.baseURL + "/api/auth/login"
+		resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(payload))
+		if err == nil {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				c.unifiOS = true
+				c.detected = true
+				c.loggedIn = true
+				c.csrfToken = resp.Header.Get("X-CSRF-Token")
+				log.Printf("unifi: detected UniFi OS controller")
+				return nil
+			}
+		}
+		// Fall back to legacy controller
+		url = c.baseURL + "/api/login"
+		resp, err = c.httpClient.Post(url, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			return fmt.Errorf("POST %s: %w", url, err)
+		}
+		defer resp.Body.Close()
+		io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("login returned status %d", resp.StatusCode)
+		}
+		c.unifiOS = false
+		c.detected = true
+		c.loggedIn = true
+		log.Printf("unifi: detected legacy controller")
+		return nil
+	}
+
+	// Subsequent logins use the detected variant
+	url := c.loginURL()
 	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", url, err)
@@ -203,7 +259,25 @@ func (c *Client) login() error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("login returned status %d", resp.StatusCode)
 	}
+	if c.unifiOS {
+		c.csrfToken = resp.Header.Get("X-CSRF-Token")
+	}
+	c.loggedIn = true
 	return nil
+}
+
+func (c *Client) loginURL() string {
+	if c.unifiOS {
+		return c.baseURL + "/api/auth/login"
+	}
+	return c.baseURL + "/api/login"
+}
+
+func (c *Client) apiPrefix() string {
+	if c.unifiOS {
+		return c.baseURL + "/proxy/network/api/s/" + c.site
+	}
+	return c.baseURL + "/api/s/" + c.site
 }
 
 type deviceResponse struct {
@@ -251,8 +325,12 @@ type rawClient struct {
 }
 
 func (c *Client) fetchDevices() ([]rawDevice, error) {
-	url := c.baseURL + "/api/s/" + c.site + "/stat/device"
-	resp, err := c.httpClient.Get(url)
+	url := c.apiPrefix() + "/stat/device"
+	req, _ := http.NewRequest("GET", url, nil)
+	if c.unifiOS && c.csrfToken != "" {
+		req.Header.Set("X-CSRF-Token", c.csrfToken)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
@@ -269,8 +347,12 @@ func (c *Client) fetchDevices() ([]rawDevice, error) {
 }
 
 func (c *Client) fetchClients() ([]rawClient, error) {
-	url := c.baseURL + "/api/s/" + c.site + "/stat/sta"
-	resp, err := c.httpClient.Get(url)
+	url := c.apiPrefix() + "/stat/sta"
+	req, _ := http.NewRequest("GET", url, nil)
+	if c.unifiOS && c.csrfToken != "" {
+		req.Header.Set("X-CSRF-Token", c.csrfToken)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
@@ -421,5 +503,9 @@ func (c *Client) buildSummary(devices []rawDevice, clients []rawClient, dt float
 }
 
 func (c *Client) String() string {
-	return fmt.Sprintf("UniFi[%s/s/%s]", c.baseURL, c.site)
+	variant := "legacy"
+	if c.unifiOS {
+		variant = "unifi-os"
+	}
+	return fmt.Sprintf("UniFi[%s/s/%s (%s)]", c.baseURL, c.site, variant)
 }
