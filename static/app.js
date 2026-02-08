@@ -367,7 +367,15 @@
     function renderTalkers(tid, talkers, vk, fmt, cls) {
         var tb = document.getElementById(tid);
         if (!talkers || !talkers.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-state">No data &mdash; requires root / CAP_NET_RAW</td></tr>'; return; }
+
+        // Detect if LOCAL_NETS direction data is present
+        var hasDirection = false;
+        for (var di = 0; di < talkers.length; di++) {
+            if ((talkers[di].rx_bytes || 0) > 0 || (talkers[di].tx_bytes || 0) > 0) { hasDirection = true; break; }
+        }
+
         var mx = talkers[0][vk] || 1, h = '';
+        var isRate = (vk === 'rate_bytes');
         talkers.forEach(function(t, i) {
             var pct = ((t[vk] / mx) * 100).toFixed(1);
             var flag = t.country ? countryFlag(t.country) + ' ' : '';
@@ -379,9 +387,28 @@
                 : '<span class="ip-cell">' + t.ip + '</span>' + geo;
             h += '<tr><td><span class="' + rankClass(i) + '">' + (i + 1) + '</span></td>';
             h += '<td>' + host + '</td>';
-            h += '<td style="white-space:nowrap">' + fmt(t[vk]) + '</td>';
+            if (hasDirection) {
+                if (isRate) {
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--rx)">' + formatRate(t.rx_rate || 0) + '</td>';
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--tx)">' + formatRate(t.tx_rate || 0) + '</td>';
+                } else {
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--rx)">' + formatBytes(t.rx_bytes || 0) + '</td>';
+                    h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--tx)">' + formatBytes(t.tx_bytes || 0) + '</td>';
+                }
+            }
+            h += '<td style="white-space:nowrap;font-variant-numeric:tabular-nums">' + fmt(t[vk]) + '</td>';
             h += '<td class="bar-cell"><div class="bar-bg"></div><div class="bar-fill ' + cls + '" style="width:' + pct + '%"></div></td></tr>';
         });
+
+        // Update table header dynamically
+        var thead = tb.parentElement.querySelector('thead tr');
+        if (thead) {
+            if (hasDirection) {
+                thead.innerHTML = '<th>#</th><th>Host</th><th style="width:12%">RX</th><th style="width:12%">TX</th><th style="width:12%">Total</th><th style="width:18%"></th>';
+            } else {
+                thead.innerHTML = '<th>#</th><th>Host</th><th>' + (isRate ? 'Rate' : 'Total') + '</th><th style="width:28%"></th>';
+            }
+        }
         tb.innerHTML = h;
     }
 

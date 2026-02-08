@@ -97,8 +97,19 @@ chmod 0600 /opt/bandwidth-monitor/.env
 | `UNIFI_PASS` | | UniFi controller password |
 | `UNIFI_SITE` | `default` | UniFi site name |
 | `VPN_STATUS_FILES` | *(none)* | Comma-separated `iface=path` pairs for VPN routing detection (e.g. `wg0=/run/wg0-active`) |
+| `LOCAL_NETS` | *(none)* | Comma-separated CIDRs for SPAN/mirror port RX/TX direction detection (e.g. `192.0.2.0/24,2001:db8::/48`) |
 
 The DNS and WiFi tabs are only shown when their respective URLs are configured.
+
+The UniFi integration auto-detects both legacy controllers (port 8443) and UniFi OS devices (UDM/UDR/CloudKey Gen2+, port 443).
+
+### SPAN / Mirror Port Mode
+
+When monitoring via a switch mirror port, set `LOCAL_NETS` to your public address ranges so the top-talkers tables can distinguish upload (TX) from download (RX) per external host — similar to iftop's `-F`/`-G` flags:
+
+```bash
+LOCAL_NETS=192.0.2.0/24,2001:db8::/48
+```
 
 ## Installation
 
@@ -224,8 +235,8 @@ A [SwiftBar](https://github.com/swiftbar/SwiftBar) / [xbar](https://xbarapp.com/
 
 **Multi-server example** (edit the defaults in the script):
 ```bash
-SERVERS="http://192.168.1.1:8080, http://198.51.100.1:8080"
-PREFER_IFACE_MAP="http://192.168.1.1:8080=eth0,http://198.51.100.1:8080=ppp0"
+SERVERS="http://198.51.100.1:8080, http://203.0.113.1:8080"
+PREFER_IFACE_MAP="http://198.51.100.1:8080=eth0,http://203.0.113.1:8080=ppp0"
 ```
 
 The plugin tries each server in order with a 1-second timeout. The preferred interface is resolved per-server from the map. Shows a 🔒 icon when VPN routing is active.

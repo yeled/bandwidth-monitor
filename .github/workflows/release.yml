@@ -299,7 +299,7 @@ jobs:
             BUILDDATE=$(date +%s)
 
             # apk mkpkg uses -I key:value for info, -F dir for files, -o for output
-            APK_FILE="$WORKSPACE/pkg-out/bandwidth-monitor-${VERSION}-r1.apk"
+            APK_FILE="$WORKSPACE/pkg-out/bandwidth-monitor-${VERSION}-r1_${ARCH}.apk"
             cd "$PKG_DIR"
             $APK mkpkg \
               -I "name:bandwidth-monitor" \

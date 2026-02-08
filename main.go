@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,6 +39,28 @@ func main() {
 	captureDevice := env("DEVICE", "")
 	promiscuous := env("PROMISCUOUS", "true")
 	promiscuousBool, _ := strconv.ParseBool(promiscuous)
+
+	// Parse LOCAL_NETS: comma-separated CIDRs for SPAN port direction detection
+	// e.g. LOCAL_NETS=192.0.2.0/24,2001:db8::/48
+	var localNets []*net.IPNet
+	if raw := os.Getenv("LOCAL_NETS"); raw != "" {
+		for _, cidr := range strings.Split(raw, ",") {
+			cidr = strings.TrimSpace(cidr)
+			if cidr == "" {
+				continue
+			}
+			_, ipnet, err := net.ParseCIDR(cidr)
+			if err != nil {
+				log.Printf("LOCAL_NETS: invalid CIDR %q: %v", cidr, err)
+				continue
+			}
+			localNets = append(localNets, ipnet)
+		}
+		if len(localNets) > 0 {
+			log.Printf("SPAN port mode: %d local network(s) configured for RX/TX direction detection", len(localNets))
+		}
+	}
+
 	geoCountry := env("GEO_COUNTRY", "GeoLite2-Country.mmdb")
 	geoASN := env("GEO_ASN", "GeoLite2-ASN.mmdb")
 	adguardURL := env("ADGUARD_URL", "")
@@ -60,7 +83,7 @@ func main() {
 	}
 
 	// Parse VPN_STATUS_FILES: comma-separated "iface=path" pairs
-	// e.g. VPN_STATUS_FILES=ffmuc=/run/ffmuc-active,wg0=/run/wg0-active
+	// e.g. VPN_STATUS_FILES=myvpn=/run/myvpn-active,wg0=/run/wg0-active
 	vpnStatusFiles := make(map[string]string)
 	if raw := os.Getenv("VPN_STATUS_FILES"); raw != "" {
 		for _, entry := range strings.Split(raw, ",") {
@@ -74,7 +97,7 @@ func main() {
 	statsCollector := collector.New(vpnStatusFiles)
 	go statsCollector.Run()
 
-	talkerTracker := talkers.New(captureDevice, promiscuousBool, geoDB)
+	talkerTracker := talkers.New(captureDevice, promiscuousBool, localNets, geoDB)
 	go talkerTracker.Run()
 
 	var adguardClient *adguard.Client
