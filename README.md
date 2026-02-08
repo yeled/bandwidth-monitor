@@ -97,15 +97,17 @@ chmod 0600 /opt/bandwidth-monitor/.env
 | `UNIFI_PASS` | | UniFi controller password |
 | `UNIFI_SITE` | `default` | UniFi site name |
 | `VPN_STATUS_FILES` | *(none)* | Comma-separated `iface=path` pairs for VPN routing detection (e.g. `wg0=/run/wg0-active`) |
-| `LOCAL_NETS` | *(none)* | Comma-separated CIDRs for SPAN/mirror port RX/TX direction detection (e.g. `192.0.2.0/24,2001:db8::/48`) |
+| `LOCAL_NETS` | *(auto-detect)* | Comma-separated CIDRs for RX/TX direction detection (e.g. `192.0.2.0/24,2001:db8::/48`). Auto-discovered from local interfaces if not set. |
 
 The DNS and WiFi tabs are only shown when their respective URLs are configured.
 
 The UniFi integration auto-detects both legacy controllers (port 8443) and UniFi OS devices (UDM/UDR/CloudKey Gen2+, port 443).
 
-### SPAN / Mirror Port Mode
+### RX/TX Direction Detection
 
-When monitoring via a switch mirror port, set `LOCAL_NETS` to your public address ranges so the top-talkers tables can distinguish upload (TX) from download (RX) per external host — similar to iftop's `-F`/`-G` flags:
+The top-talkers tables show per-host RX (download) and TX (upload) columns. Local network ranges are **auto-discovered** from interface addresses at startup — no configuration needed in most cases.
+
+For SPAN/mirror port setups or if auto-discovery doesn't cover all your addresses (e.g. dynamic ISP prefixes), set `LOCAL_NETS` explicitly — similar to iftop's `-F`/`-G` flags:
 
 ```bash
 LOCAL_NETS=192.0.2.0/24,2001:db8::/48

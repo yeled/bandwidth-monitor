@@ -42,6 +42,7 @@ func main() {
 
 	// Parse LOCAL_NETS: comma-separated CIDRs for SPAN port direction detection
 	// e.g. LOCAL_NETS=192.0.2.0/24,2001:db8::/48
+	// If not set, auto-discovers from local interface addresses.
 	var localNets []*net.IPNet
 	if raw := os.Getenv("LOCAL_NETS"); raw != "" {
 		for _, cidr := range strings.Split(raw, ",") {
@@ -56,8 +57,37 @@ func main() {
 			}
 			localNets = append(localNets, ipnet)
 		}
+		log.Printf("LOCAL_NETS: %d network(s) from configuration", len(localNets))
+	} else {
+		// Auto-discover from local interfaces
+		ifaces, err := net.Interfaces()
+		if err == nil {
+			for _, iface := range ifaces {
+				if iface.Flags&net.FlagLoopback != 0 {
+					continue
+				}
+				addrs, err := iface.Addrs()
+				if err != nil {
+					continue
+				}
+				for _, addr := range addrs {
+					ipnet, ok := addr.(*net.IPNet)
+					if !ok {
+						continue
+					}
+					// Skip link-local
+					if ipnet.IP.IsLinkLocalUnicast() || ipnet.IP.IsLinkLocalMulticast() {
+						continue
+					}
+					localNets = append(localNets, ipnet)
+				}
+			}
+		}
 		if len(localNets) > 0 {
-			log.Printf("SPAN port mode: %d local network(s) configured for RX/TX direction detection", len(localNets))
+			log.Printf("LOCAL_NETS: auto-discovered %d network(s) from interfaces", len(localNets))
+			for _, n := range localNets {
+				log.Printf("  %s", n.String())
+			}
 		}
 	}
 
