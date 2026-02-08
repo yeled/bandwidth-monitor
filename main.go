@@ -16,8 +16,10 @@ import (
 
 	"bandwidth-monitor/adguard"
 	"bandwidth-monitor/collector"
+	"bandwidth-monitor/dns"
 	"bandwidth-monitor/geoip"
 	"bandwidth-monitor/handler"
+	"bandwidth-monitor/nextdns"
 	"bandwidth-monitor/talkers"
 	"bandwidth-monitor/unifi"
 )
@@ -96,6 +98,8 @@ func main() {
 	adguardURL := env("ADGUARD_URL", "")
 	adguardUser := env("ADGUARD_USER", "")
 	adguardPass := env("ADGUARD_PASS", "")
+	nextdnsProfile := env("NEXTDNS_PROFILE", "")
+	nextdnsAPIKey := env("NEXTDNS_API_KEY", "")
 	unifiURL := env("UNIFI_URL", "")
 	unifiUser := env("UNIFI_USER", "")
 	unifiPass := env("UNIFI_PASS", "")
@@ -130,11 +134,18 @@ func main() {
 	talkerTracker := talkers.New(captureDevice, promiscuousBool, localNets, geoDB)
 	go talkerTracker.Run()
 
-	var adguardClient *adguard.Client
+	// DNS provider: AdGuard Home or NextDNS (mutually exclusive, AdGuard takes priority)
+	var dnsProvider dns.Provider
 	if adguardURL != "" {
-		adguardClient = adguard.New(adguardURL, adguardUser, adguardPass, 10*time.Second)
-		go adguardClient.Run()
-		log.Printf("AdGuard Home integration enabled: %s", adguardURL)
+		ac := adguard.New(adguardURL, adguardUser, adguardPass, 10*time.Second)
+		go ac.Run()
+		dnsProvider = ac
+		log.Printf("DNS integration: AdGuard Home (%s)", adguardURL)
+	} else if nextdnsProfile != "" && nextdnsAPIKey != "" {
+		nc := nextdns.New(nextdnsProfile, nextdnsAPIKey, 30*time.Second)
+		go nc.Run()
+		dnsProvider = nc
+		log.Printf("DNS integration: NextDNS (profile %s)", nextdnsProfile)
 	}
 
 	var unifiClient *unifi.Client
@@ -149,10 +160,10 @@ func main() {
 	mux.HandleFunc("/api/interfaces/history", handler.InterfaceHistory(statsCollector))
 	mux.HandleFunc("/api/talkers/bandwidth", handler.TopTalkersBandwidth(talkerTracker))
 	mux.HandleFunc("/api/talkers/volume", handler.TopTalkersVolume(talkerTracker))
-	mux.HandleFunc("/api/dns", handler.DNSSummary(adguardClient))
+	mux.HandleFunc("/api/dns", handler.DNSSummary(dnsProvider))
 	mux.HandleFunc("/api/wifi", handler.WiFiSummary(unifiClient))
-	mux.HandleFunc("/api/summary", handler.MenuBarSummary(statsCollector, talkerTracker, adguardClient, unifiClient))
-	mux.HandleFunc("/api/ws", handler.WebSocket(statsCollector, talkerTracker, adguardClient, unifiClient))
+	mux.HandleFunc("/api/summary", handler.MenuBarSummary(statsCollector, talkerTracker, dnsProvider, unifiClient))
+	mux.HandleFunc("/api/ws", handler.WebSocket(statsCollector, talkerTracker, dnsProvider, unifiClient))
 	staticSub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
@@ -166,8 +177,8 @@ func main() {
 		fmt.Println("\nShutting down...")
 		statsCollector.Stop()
 		talkerTracker.Stop()
-		if adguardClient != nil {
-			adguardClient.Stop()
+		if dnsProvider != nil {
+			dnsProvider.Stop()
 		}
 		if unifiClient != nil {
 			unifiClient.Stop()

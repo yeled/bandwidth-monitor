@@ -629,6 +629,9 @@
         document.getElementById('dnsNoData').style.display = 'none';
         document.getElementById('dnsHasData').style.display = '';
 
+        var providerName = dns.provider_name || 'DNS';
+        document.getElementById('dnsCardTitle').textContent = 'DNS \u2014 ' + providerName;
+
         document.getElementById('dnsTotalQueries').textContent = dns.total_queries.toLocaleString();
         document.getElementById('dnsBlocked').textContent = dns.blocked_total.toLocaleString();
         document.getElementById('dnsBlockPct').textContent = dns.blocked_pct.toFixed(1) + '%';

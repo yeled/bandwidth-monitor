@@ -9,6 +9,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"bandwidth-monitor/dns"
 )
 
 // Client polls ADGuard Home's REST API for DNS statistics.
@@ -45,44 +47,6 @@ type Stats struct {
 	BlockedFiltering []int `json:"blocked_filtering"`
 
 	TimeUnits string `json:"time_units"`
-}
-
-// DomainStat is a single domain + count entry for the frontend.
-type DomainStat struct {
-	Domain string `json:"domain"`
-	Count  int    `json:"count"`
-}
-
-// ClientStat is a single client + count entry for the frontend.
-type ClientStat struct {
-	IP    string `json:"ip"`
-	Count int    `json:"count"`
-}
-
-// UpstreamStat is a single upstream server entry for the frontend.
-type UpstreamStat struct {
-	Address   string  `json:"address"`
-	Responses int     `json:"responses"`
-	AvgMs     float64 `json:"avg_ms"`
-}
-
-// Summary is the cleaned-up data sent to the frontend.
-type Summary struct {
-	TotalQueries   int     `json:"total_queries"`
-	BlockedTotal   int     `json:"blocked_total"`
-	BlockedPercent float64 `json:"blocked_pct"`
-	AvgLatencyMs   float64 `json:"avg_latency_ms"`
-
-	TopQueried []DomainStat `json:"top_queried"`
-	TopBlocked []DomainStat `json:"top_blocked"`
-	TopClients []ClientStat `json:"top_clients"`
-
-	Upstreams []UpstreamStat `json:"upstreams"`
-
-	// Time-series for sparkline / mini-chart
-	QueriesSeries []int  `json:"queries_series"`
-	BlockedSeries []int  `json:"blocked_series"`
-	TimeUnits     string `json:"time_units"`
 }
 
 // New creates an AdGuard Home API client.
@@ -158,7 +122,7 @@ func (c *Client) poll() {
 }
 
 // GetSummary returns a frontend-friendly summary, or nil if no data yet.
-func (c *Client) GetSummary() *Summary {
+func (c *Client) GetSummary() *dns.Summary {
 	c.mu.RLock()
 	s := c.stats
 	c.mu.RUnlock()
@@ -172,11 +136,12 @@ func (c *Client) GetSummary() *Summary {
 		blockedPct = float64(blockedTotal) / float64(s.NumDNSQueries) * 100
 	}
 
-	sum := &Summary{
+	sum := &dns.Summary{
+		ProviderName:   "AdGuard Home",
 		TotalQueries:   s.NumDNSQueries,
 		BlockedTotal:   blockedTotal,
 		BlockedPercent: blockedPct,
-		AvgLatencyMs:   s.AvgProcessingTime * 1000, // seconds → ms
+		AvgLatencyMs:   s.AvgProcessingTime * 1000,
 		TopQueried:     parseDomainEntries(s.TopQueriedDomains, 10),
 		TopBlocked:     parseDomainEntries(s.TopBlockedDomains, 10),
 		TopClients:     parseClientEntries(s.TopClients, 10),
@@ -195,7 +160,7 @@ func (c *Client) Available() bool {
 	return c.stats != nil
 }
 
-func parseDomainEntries(raw []map[string]float64, limit int) []DomainStat {
+func parseDomainEntries(raw []map[string]float64, limit int) []dns.DomainStat {
 	type kv struct {
 		k string
 		v int
@@ -210,14 +175,14 @@ func parseDomainEntries(raw []map[string]float64, limit int) []DomainStat {
 	if len(list) > limit {
 		list = list[:limit]
 	}
-	out := make([]DomainStat, len(list))
+	out := make([]dns.DomainStat, len(list))
 	for i, e := range list {
-		out[i] = DomainStat{Domain: e.k, Count: e.v}
+		out[i] = dns.DomainStat{Domain: e.k, Count: e.v}
 	}
 	return out
 }
 
-func parseClientEntries(raw []map[string]float64, limit int) []ClientStat {
+func parseClientEntries(raw []map[string]float64, limit int) []dns.ClientStat {
 	type kv struct {
 		k string
 		v int
@@ -232,15 +197,15 @@ func parseClientEntries(raw []map[string]float64, limit int) []ClientStat {
 	if len(list) > limit {
 		list = list[:limit]
 	}
-	out := make([]ClientStat, len(list))
+	out := make([]dns.ClientStat, len(list))
 	for i, e := range list {
-		out[i] = ClientStat{IP: e.k, Count: e.v}
+		out[i] = dns.ClientStat{IP: e.k, Count: e.v}
 	}
 	return out
 }
 
 // buildUpstreams merges response counts and average latencies per upstream.
-func buildUpstreams(respEntries, avgEntries []map[string]float64) []UpstreamStat {
+func buildUpstreams(respEntries, avgEntries []map[string]float64) []dns.UpstreamStat {
 	respMap := make(map[string]int)
 	for _, m := range respEntries {
 		for k, v := range m {
@@ -269,9 +234,9 @@ func buildUpstreams(respEntries, avgEntries []map[string]float64) []UpstreamStat
 		}
 	}
 	sort.Slice(keys, func(i, j int) bool { return respMap[keys[i]] > respMap[keys[j]] })
-	out := make([]UpstreamStat, len(keys))
+	out := make([]dns.UpstreamStat, len(keys))
 	for i, k := range keys {
-		out[i] = UpstreamStat{Address: k, Responses: respMap[k], AvgMs: avgMap[k]}
+		out[i] = dns.UpstreamStat{Address: k, Responses: respMap[k], AvgMs: avgMap[k]}
 	}
 	return out
 }

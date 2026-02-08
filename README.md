@@ -92,6 +92,8 @@ chmod 0600 /opt/bandwidth-monitor/.env
 | `ADGUARD_URL` | *(disabled)* | AdGuard Home base URL (e.g. `http://adguard.example.net`) |
 | `ADGUARD_USER` | | AdGuard Home username |
 | `ADGUARD_PASS` | | AdGuard Home password |
+| `NEXTDNS_PROFILE` | *(disabled)* | NextDNS profile ID (e.g. `abc123`) |
+| `NEXTDNS_API_KEY` | | NextDNS API key (from [my.nextdns.io/account](https://my.nextdns.io/account)) |
 | `UNIFI_URL` | *(disabled)* | UniFi controller URL (e.g. `https://unifi.example.net:8443`) |
 | `UNIFI_USER` | | UniFi controller username |
 | `UNIFI_PASS` | | UniFi controller password |
@@ -99,7 +101,7 @@ chmod 0600 /opt/bandwidth-monitor/.env
 | `VPN_STATUS_FILES` | *(none)* | Comma-separated `iface=path` pairs for VPN routing detection (e.g. `wg0=/run/wg0-active`) |
 | `LOCAL_NETS` | *(auto-detect)* | Comma-separated CIDRs for RX/TX direction detection (e.g. `192.0.2.0/24,2001:db8::/48`). Auto-discovered from local interfaces if not set. |
 
-The DNS and WiFi tabs are only shown when their respective URLs are configured.
+The DNS tab supports either **AdGuard Home** or **NextDNS** (mutually exclusive; AdGuard takes priority if both are configured). The WiFi tab is only shown when UniFi is configured.
 
 The UniFi integration auto-detects both legacy controllers (port 8443) and UniFi OS devices (UDM/UDR/CloudKey Gen2+, port 443).
 

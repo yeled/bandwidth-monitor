@@ -174,14 +174,14 @@
         <div class="tab-panel" id="tabDns">
         <div class="dns-section" id="dnsSection">
             <div id="dnsNoData" style="text-align:center;padding:48px 16px;color:var(--text-2)">
-                <div style="font-size:14px;font-weight:500;margin-bottom:4px">AdGuard Home not connected</div>
-                <div style="font-size:12px">Configure with --adguard-url or ADGUARD_URL env var</div>
+                <div style="font-size:14px;font-weight:500;margin-bottom:4px">DNS provider not connected</div>
+                <div style="font-size:12px">Configure AdGuard Home (ADGUARD_URL) or NextDNS (NEXTDNS_PROFILE + NEXTDNS_API_KEY)</div>
             </div>
             <div id="dnsHasData" style="display:none">
             <div class="card" style="margin-bottom:16px">
                 <div class="card-header">
                     <div>
-                        <div class="card-title">DNS &mdash; AdGuard Home</div>
+                        <div class="card-title" id="dnsCardTitle">DNS</div>
                         <div class="card-subtitle">Query statistics</div>
                     </div>
                     <div style="font-size:11px;color:var(--text-2)" id="dnsStatus"></div>
