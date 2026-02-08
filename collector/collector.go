@@ -17,9 +17,9 @@ type InterfaceStat struct {
 	IfaceType       string   `json:"iface_type"`
 	OperState       string   `json:"oper_state"`
 	Addrs           []string `json:"addrs,omitempty"`
-	VPNRouting      bool     `json:"vpn_routing,omitempty"`
+	VPNRouting      bool     `json:"vpn_routing"`
 	VPNRoutingSince string   `json:"vpn_routing_since,omitempty"`
-	VPNTracked      bool     `json:"vpn_tracked,omitempty"`
+	VPNTracked      bool     `json:"vpn_tracked"`
 	RxBytes         uint64   `json:"rx_bytes"`
 	TxBytes         uint64   `json:"tx_bytes"`
 	RxPackets       uint64   `json:"rx_packets"`
@@ -178,6 +178,14 @@ func (c *Collector) poll() {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Remove interfaces that no longer exist in /proc/net/dev
+	for name := range c.current {
+		if _, exists := stats[name]; !exists {
+			delete(c.current, name)
+			delete(c.previous, name)
+		}
+	}
 
 	for name, cur := range stats {
 		prev, hasPrev := c.previous[name]
