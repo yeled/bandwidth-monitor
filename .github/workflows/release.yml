@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  GO_VERSION: '1.23'
+  GO_VERSION: '1.25.7'
 
 jobs:
   # ─── Linux deb/rpm (amd64 + arm64) ────────────────────────────────
@@ -42,17 +42,25 @@ jobs:
         if: matrix.goarch == 'arm64'
         run: |
           sudo dpkg --add-architecture arm64
-          # Pin existing sources to amd64 only (skip non-deb lines and third-party lists)
+          # Pin ALL existing apt sources to amd64 only
+          # Handle .list files
           for f in /etc/apt/sources.list.d/*.list; do
             [ -f "$f" ] && sudo sed -i '/^deb /{/\[/!s|^deb |deb [arch=amd64] |}' "$f" 2>/dev/null || true
           done
-          # Also fix the main sources list if it exists
           [ -f /etc/apt/sources.list ] && sudo sed -i '/^deb /{/\[/!s|^deb |deb [arch=amd64] |}' /etc/apt/sources.list 2>/dev/null || true
-          # Add arm64 ports
-          cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64-ports.list
-deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs) main restricted universe
-deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs)-updates main restricted universe
-EOF
+          # Handle DEB822 .sources files (Ubuntu 24.04+)
+          for f in /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] && sudo sed -i '/^Architectures:/!{/^Types:/a Architectures: amd64}' "$f" 2>/dev/null || true
+            [ -f "$f" ] && grep -q '^Architectures:' "$f" || sudo sed -i '/^Types:/a Architectures: amd64' "$f" 2>/dev/null || true
+          done
+          # Add arm64 ports (covers main, updates, security, backports)
+          CODENAME=$(lsb_release -cs)
+          printf '%s\n' \
+            "deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME} main restricted universe" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME}-updates main restricted universe" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME}-security main restricted universe" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME}-backports main restricted universe" \
+            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libpcap-dev:arm64
 
@@ -71,7 +79,8 @@ EOF
           CGO_ENABLED: "1"
           CC: ${{ matrix.cc }}
         run: |
-          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o bandwidth-monitor .
+          VERSION="${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}"
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o bandwidth-monitor .
 
       - name: Prepare packaging service file
         run: |
@@ -83,18 +92,18 @@ EOF
 
       - name: Build deb
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}
           GOARCH: ${{ matrix.pkg_arch }}
         run: |
-          VERSION="${VERSION#v}"
+          export VERSION="${VERSION#v}"
           nfpm package -p deb -f nfpm.yaml
 
       - name: Build rpm
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}
           GOARCH: ${{ matrix.pkg_arch }}
         run: |
-          VERSION="${VERSION#v}"
+          export VERSION="${VERSION#v}"
           nfpm package -p rpm -f nfpm.yaml
 
       - name: Upload artifacts
@@ -110,68 +119,183 @@ EOF
     strategy:
       matrix:
         include:
+          # ── OpenWrt 23.05 (stable) ──
           - sdk_url_suffix: x86/64
-            sdk_pattern: "openwrt-sdk-*-x86-64_*"
             arch: x86_64
+            goarch: amd64
+            cc_prefix: x86_64-openwrt-linux-musl
+            release: "23.05.5"
+            base_url: "https://downloads.openwrt.org/releases/23.05.5/targets"
           - sdk_url_suffix: rockchip/armv8
-            sdk_pattern: "openwrt-sdk-*-rockchip-armv8_*"
             arch: aarch64_generic
+            goarch: arm64
+            cc_prefix: aarch64-openwrt-linux-musl
+            release: "23.05.5"
+            base_url: "https://downloads.openwrt.org/releases/23.05.5/targets"
           - sdk_url_suffix: ath79/generic
-            sdk_pattern: "openwrt-sdk-*-ath79-generic_*"
             arch: mips_24kc
+            goarch: mips
+            gomips: softfloat
+            cc_prefix: mips-openwrt-linux-musl
+            release: "23.05.5"
+            base_url: "https://downloads.openwrt.org/releases/23.05.5/targets"
           - sdk_url_suffix: ramips/mt7621
-            sdk_pattern: "openwrt-sdk-*-ramips-mt7621_*"
             arch: mipsel_24kc
+            goarch: mipsle
+            gomips: softfloat
+            cc_prefix: mipsel-openwrt-linux-musl
+            release: "23.05.5"
+            base_url: "https://downloads.openwrt.org/releases/23.05.5/targets"
           - sdk_url_suffix: mediatek/filogic
-            sdk_pattern: "openwrt-sdk-*-mediatek-filogic_*"
             arch: aarch64_cortex-a53
+            goarch: arm64
+            cc_prefix: aarch64-openwrt-linux-musl
+            release: "23.05.5"
+            base_url: "https://downloads.openwrt.org/releases/23.05.5/targets"
+          # ── OpenWrt SNAPSHOT (nightly) ──
+          - sdk_url_suffix: x86/64
+            arch: x86_64-snapshot
+            goarch: amd64
+            cc_prefix: x86_64-openwrt-linux-musl
+            release: "snapshot"
+            base_url: "https://downloads.openwrt.org/snapshots/targets"
+          - sdk_url_suffix: rockchip/armv8
+            arch: aarch64_generic-snapshot
+            goarch: arm64
+            cc_prefix: aarch64-openwrt-linux-musl
+            release: "snapshot"
+            base_url: "https://downloads.openwrt.org/snapshots/targets"
+          - sdk_url_suffix: mediatek/filogic
+            arch: aarch64_cortex-a53-snapshot
+            goarch: arm64
+            cc_prefix: aarch64-openwrt-linux-musl
+            release: "snapshot"
+            base_url: "https://downloads.openwrt.org/snapshots/targets"
 
     runs-on: ubuntu-latest
-    env:
-      OPENWRT_RELEASE: "23.05.5"
 
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
-            python3-distutils python3-setuptools rsync swig unzip zlib1g-dev \
-            file wget
+          sudo apt-get install -y build-essential file wget fakeroot
 
       - name: Download and extract OpenWrt SDK
         run: |
-          SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_RELEASE }}/targets/${{ matrix.sdk_url_suffix }}"
+          SDK_URL="${{ matrix.base_url }}/${{ matrix.sdk_url_suffix }}"
           SDK_FILE=$(curl -sf "$SDK_URL/sha256sums" | grep 'openwrt-sdk-' | grep -oP 'openwrt-sdk-[^\s*]+\.tar\.\w+' | head -1)
           echo "Downloading $SDK_URL/$SDK_FILE"
           wget -q "$SDK_URL/$SDK_FILE"
           tar xf "$SDK_FILE"
-          echo "SDK_DIR=$(ls -d openwrt-sdk-* | head -1)" >> $GITHUB_ENV
+          rm -f "$SDK_FILE"
+          echo "SDK_DIR=$(cd $(find . -maxdepth 1 -type d -name 'openwrt-sdk-*' | head -1) && pwd)" >> $GITHUB_ENV
 
-      - name: Set up package feed
+      - name: Prepare libpcap for cross-compilation
         run: |
-          cd "$SDK_DIR"
-          echo "src-link bwmon ${{ github.workspace }}/packaging" >> feeds.conf.default
-          # Rename openwrt-Makefile to Makefile in a feed-compatible structure
-          mkdir -p ${{ github.workspace }}/packaging/bandwidth-monitor/files
-          cp ${{ github.workspace }}/packaging/openwrt-Makefile ${{ github.workspace }}/packaging/bandwidth-monitor/Makefile
-          cp ${{ github.workspace }}/packaging/openwrt-files/* ${{ github.workspace }}/packaging/bandwidth-monitor/files/
-          ./scripts/feeds update -a
-          ./scripts/feeds install bandwidth-monitor
+          TOOLCHAIN_DIR=$(find "$SDK_DIR/staging_dir" -maxdepth 1 -name 'toolchain-*' -type d | head -1)
+          TOOLCHAIN_DIR=$(cd "$TOOLCHAIN_DIR" && pwd)
+          TARGET_DIR=$(find "$SDK_DIR/staging_dir" -maxdepth 1 -name 'target-*' -type d | head -1)
+          TARGET_DIR=$(cd "$TARGET_DIR" && pwd)
 
-      - name: Build OpenWrt package
-        run: |
-          cd "$SDK_DIR"
-          make package/bandwidth-monitor/compile V=s -j$(nproc) \
-            CONFIG_PACKAGE_bandwidth-monitor=y
+          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
+          export STAGING_DIR="$SDK_DIR/staging_dir"
 
-      - name: Collect ipk
+          # Build libpcap from source for the target
+          if [ ! -f "$TARGET_DIR/usr/include/pcap.h" ]; then
+            echo "Building libpcap from source..."
+            PCAP_VER="1.10.5"
+            wget -q "https://www.tcpdump.org/release/libpcap-${PCAP_VER}.tar.xz"
+            tar xf "libpcap-${PCAP_VER}.tar.xz"
+            cd "libpcap-${PCAP_VER}"
+            CC=${{ matrix.cc_prefix }}-gcc \
+            AR=${{ matrix.cc_prefix }}-ar \
+            RANLIB=${{ matrix.cc_prefix }}-ranlib \
+            ./configure \
+              --host=${{ matrix.cc_prefix }} \
+              --prefix="$TARGET_DIR/usr" \
+              --with-pcap=linux \
+              --without-libnl \
+              --disable-shared \
+              --enable-static
+            make -j$(nproc)
+            make install
+            cd "${{ github.workspace }}"
+            rm -rf "libpcap-${PCAP_VER}" "libpcap-${PCAP_VER}.tar.xz"
+          fi
+
+          echo "pcap.h location:"
+          find "$TARGET_DIR" -name 'pcap.h' -type f 2>/dev/null | head -3
+          echo "TOOLCHAIN_DIR=$TOOLCHAIN_DIR" >> $GITHUB_ENV
+          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+          echo "$TOOLCHAIN_DIR/bin" >> $GITHUB_PATH
+
+      - name: Build binary with SDK toolchain
         run: |
-          mkdir -p ipk-out
-          find "$SDK_DIR/bin" -name 'bandwidth-monitor*.ipk' -exec cp {} ipk-out/ \;
-          ls -lh ipk-out/
+          export STAGING_DIR="$SDK_DIR/staging_dir"
+          export CGO_ENABLED=1
+          export GOOS=linux
+          export GOARCH=${{ matrix.goarch }}
+          export GOMIPS=${{ matrix.gomips }}
+          export CC=${{ matrix.cc_prefix }}-gcc
+          export CXX=${{ matrix.cc_prefix }}-g++
+          export CGO_CFLAGS="-I$TARGET_DIR/usr/include -I$TOOLCHAIN_DIR/usr/include -I$TOOLCHAIN_DIR/include"
+          export CGO_LDFLAGS="-L$TARGET_DIR/usr/lib -L$TOOLCHAIN_DIR/usr/lib -L$TOOLCHAIN_DIR/lib"
+
+          VERSION="${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}"
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o bandwidth-monitor .
+          file bandwidth-monitor
+          echo "BINARY=${{ github.workspace }}/bandwidth-monitor" >> $GITHUB_ENV
+
+      - name: Package ipk
+        run: |
+          VERSION="${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}"
+          VERSION="${VERSION#v}"
+          ARCH="${{ matrix.arch }}"
+          ARCH="${ARCH%-snapshot}"
+          WORKSPACE="${{ github.workspace }}"
+
+          PKG_DIR=$(mktemp -d)
+          IPK_BUILD=$(mktemp -d)
+          mkdir -p "$PKG_DIR/usr/bin"
+          mkdir -p "$PKG_DIR/etc/bandwidth-monitor"
+          mkdir -p "$PKG_DIR/etc/init.d"
+          mkdir -p "$PKG_DIR/CONTROL"
+          mkdir -p "$WORKSPACE/ipk-out"
+
+          cp "$BINARY" "$PKG_DIR/usr/bin/bandwidth-monitor"
+          cp "$WORKSPACE/env.example" "$PKG_DIR/etc/bandwidth-monitor/env"
+          cp "$WORKSPACE/packaging/openwrt-files/bandwidth-monitor.init" "$PKG_DIR/etc/init.d/bandwidth-monitor"
+          chmod 755 "$PKG_DIR/usr/bin/bandwidth-monitor" "$PKG_DIR/etc/init.d/bandwidth-monitor"
+          chmod 600 "$PKG_DIR/etc/bandwidth-monitor/env"
+
+          cat > "$PKG_DIR/CONTROL/control" <<-CTRL
+          Package: bandwidth-monitor
+          Version: ${VERSION}
+          Architecture: ${ARCH}
+          Depends: libpcap
+          Maintainer: Annika Wickert <awlx@users.noreply.github.com>
+          Section: net
+          Description: Real-time network monitoring dashboard with embedded web UI
+          CTRL
+          sed -i 's/^[[:space:]]*//' "$PKG_DIR/CONTROL/control"
+
+          echo "/etc/bandwidth-monitor/env" > "$PKG_DIR/CONTROL/conffiles"
+
+          # Build ipk (tar-based opkg format)
+          tar czf "$IPK_BUILD/control.tar.gz" -C "$PKG_DIR/CONTROL" .
+          tar czf "$IPK_BUILD/data.tar.gz" --owner=0 --group=0 -C "$PKG_DIR" usr etc
+          echo "2.0" > "$IPK_BUILD/debian-binary"
+
+          IPK_FILE="$WORKSPACE/ipk-out/bandwidth-monitor_${VERSION}_${ARCH}.ipk"
+          cd "$IPK_BUILD"
+          ar r "$IPK_FILE" debian-binary control.tar.gz data.tar.gz
+          ls -lh "$IPK_FILE"
 
       - name: Upload OpenWrt package
         uses: actions/upload-artifact@v4
