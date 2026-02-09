@@ -116,19 +116,7 @@ func main() {
 		log.Println("GeoIP: no MMDB files found (continuing without geo)")
 	}
 
-	// Parse VPN_STATUS_FILES: comma-separated "iface=path" pairs
-	// e.g. VPN_STATUS_FILES=myvpn=/run/myvpn-active,wg0=/run/wg0-active
-	vpnStatusFiles := make(map[string]string)
-	if raw := os.Getenv("VPN_STATUS_FILES"); raw != "" {
-		for _, entry := range strings.Split(raw, ",") {
-			parts := strings.SplitN(strings.TrimSpace(entry), "=", 2)
-			if len(parts) == 2 {
-				vpnStatusFiles[parts[0]] = parts[1]
-			}
-		}
-	}
-
-	statsCollector := collector.New(vpnStatusFiles)
+	statsCollector := collector.New(captureDevice, promiscuousBool, localNets)
 	go statsCollector.Run()
 
 	talkerTracker := talkers.New(captureDevice, promiscuousBool, localNets, geoDB)

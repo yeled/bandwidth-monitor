@@ -1,124 +1,46 @@
 package collector
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/gopacket/gopacket"
+	"github.com/gopacket/gopacket/layers"
+	"github.com/gopacket/gopacket/pcap"
 )
 
+const (
+	snapshotLen    int32 = 128 // only need IP headers for direction + length
+	capTimeout           = 100 * time.Millisecond
+	rateInterval         = 1 * time.Second
+	historyMaxAge        = 24 * time.Hour
+	historyPruneAt       = 86400
+)
+
+// InterfaceStat reports aggregate bandwidth seen on the SPAN interface,
+// classified as RX (remote → LOCAL_NETS) and TX (LOCAL_NETS → remote).
 type InterfaceStat struct {
-	Name            string   `json:"name"`
-	IfaceType       string   `json:"iface_type"`
-	OperState       string   `json:"oper_state"`
-	Addrs           []string `json:"addrs,omitempty"`
-	VPNRouting      bool     `json:"vpn_routing"`
-	VPNRoutingSince string   `json:"vpn_routing_since,omitempty"`
-	VPNTracked      bool     `json:"vpn_tracked"`
-	RxBytes         uint64   `json:"rx_bytes"`
-	TxBytes         uint64   `json:"tx_bytes"`
-	RxPackets       uint64   `json:"rx_packets"`
-	TxPackets       uint64   `json:"tx_packets"`
-	RxErrors        uint64   `json:"rx_errors"`
-	TxErrors        uint64   `json:"tx_errors"`
-	RxDropped       uint64   `json:"rx_dropped"`
-	TxDropped       uint64   `json:"tx_dropped"`
-	RxRate          float64  `json:"rx_rate"`
-	TxRate          float64  `json:"tx_rate"`
-	Timestamp       int64    `json:"timestamp"`
+	Name      string   `json:"name"`
+	IfaceType string   `json:"iface_type"`
+	OperState string   `json:"oper_state"`
+	Addrs     []string `json:"addrs,omitempty"`
+	RxBytes   uint64   `json:"rx_bytes"`
+	TxBytes   uint64   `json:"tx_bytes"`
+	RxPackets uint64   `json:"rx_packets"`
+	TxPackets uint64   `json:"tx_packets"`
+	RxRate    float64  `json:"rx_rate"` // bytes/sec download
+	TxRate    float64  `json:"tx_rate"` // bytes/sec upload
+	Timestamp int64    `json:"timestamp"`
 }
 
+// HistoryPoint stores a single rate sample for the 24-hour history ring.
 type HistoryPoint struct {
 	Timestamp int64   `json:"t"`
 	RxRate    float64 `json:"rx"`
 	TxRate    float64 `json:"tx"`
-}
-
-const (
-	pollInterval   = 1 * time.Second
-	historyMaxAge  = 24 * time.Hour
-	historyPruneAt = 86400
-)
-
-type Collector struct {
-	mu             sync.RWMutex
-	current        map[string]*InterfaceStat
-	previous       map[string]*rawStat
-	history        map[string][]HistoryPoint
-	ifaceTypeCache map[string]string
-	vpnStatusFiles map[string]string // iface name → sentinel file path
-	stopCh         chan struct{}
-}
-
-type rawStat struct {
-	rxBytes   uint64
-	txBytes   uint64
-	rxPackets uint64
-	txPackets uint64
-	rxErrors  uint64
-	txErrors  uint64
-	rxDropped uint64
-	txDropped uint64
-	ts        time.Time
-}
-
-func New(vpnStatusFiles map[string]string) *Collector {
-	if vpnStatusFiles == nil {
-		vpnStatusFiles = make(map[string]string)
-	}
-	return &Collector{
-		current:        make(map[string]*InterfaceStat),
-		previous:       make(map[string]*rawStat),
-		history:        make(map[string][]HistoryPoint),
-		ifaceTypeCache: make(map[string]string),
-		vpnStatusFiles: vpnStatusFiles,
-		stopCh:         make(chan struct{}),
-	}
-}
-
-func (c *Collector) Run() {
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-	c.poll()
-	for {
-		select {
-		case <-ticker.C:
-			c.poll()
-		case <-c.stopCh:
-			return
-		}
-	}
-}
-
-func (c *Collector) Stop() {
-	close(c.stopCh)
-}
-
-func (c *Collector) GetAll() []InterfaceStat {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	stats := make([]InterfaceStat, 0, len(c.current))
-	for _, s := range c.current {
-		stats = append(stats, *s)
-	}
-	return stats
-}
-
-func (c *Collector) GetHistory() map[string][]HistoryPoint {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	result := make(map[string][]HistoryPoint, len(c.history))
-	for k, v := range c.history {
-		cp := make([]HistoryPoint, len(v))
-		copy(cp, v)
-		result[k] = cp
-	}
-	return result
 }
 
 // SparkPoint is a lightweight rate pair for sparkline rendering.
@@ -127,276 +49,270 @@ type SparkPoint struct {
 	TX float64 `json:"tx"`
 }
 
-// GetSparklines returns the last `duration` of per-interface rate data,
-// downsampled to at most `maxPoints` points.
-func (c *Collector) GetSparklines(duration time.Duration, maxPoints int) map[string][]SparkPoint {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	cutoff := time.Now().Add(-duration).UnixMilli()
-	result := make(map[string][]SparkPoint, len(c.history))
+// Collector captures packets on a SPAN/mirror port and classifies
+// traffic direction using LOCAL_NETS, replacing the /proc/net/dev approach.
+type Collector struct {
+	device      string
+	promiscuous bool
+	localNets   []*net.IPNet
 
-	for name, hist := range c.history {
-		start := 0
-		for start < len(hist) && hist[start].Timestamp < cutoff {
-			start++
-		}
-		pts := hist[start:]
-		if len(pts) == 0 {
-			continue
-		}
+	mu      sync.RWMutex
+	stat    InterfaceStat
+	history []HistoryPoint
 
-		if len(pts) <= maxPoints {
-			sp := make([]SparkPoint, len(pts))
-			for i, p := range pts {
-				sp[i] = SparkPoint{RX: p.RxRate, TX: p.TxRate}
-			}
-			result[name] = sp
-		} else {
-			sp := make([]SparkPoint, maxPoints)
-			step := float64(len(pts)) / float64(maxPoints)
-			for i := 0; i < maxPoints; i++ {
-				idx := int(float64(i) * step)
-				if idx >= len(pts) {
-					idx = len(pts) - 1
-				}
-				sp[i] = SparkPoint{RX: pts[idx].RxRate, TX: pts[idx].TxRate}
-			}
-			result[name] = sp
-		}
-	}
-	return result
+	// Packet-level accumulators (protected by accMu, updated per-packet)
+	accMu     sync.Mutex
+	rxBytes   uint64
+	txBytes   uint64
+	rxPackets uint64
+	txPackets uint64
+
+	stopCh chan struct{}
 }
 
-func (c *Collector) poll() {
-	// Auto-discovers all interfaces by reading /proc/net/dev
-	stats, err := readProcNetDev()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "collector: %v\n", err)
+// New creates a Collector that sniffs the SPAN device and classifies each
+// packet as download (RX) or upload (TX) based on whether the destination
+// or source IP falls within the supplied localNets CIDRs.
+func New(device string, promiscuous bool, localNets []*net.IPNet) *Collector {
+	return &Collector{
+		device:      device,
+		promiscuous: promiscuous,
+		localNets:   localNets,
+		stat: InterfaceStat{
+			Name:      device,
+			IfaceType: "span",
+			OperState: "up",
+		},
+		history: make([]HistoryPoint, 0, historyPruneAt),
+		stopCh:  make(chan struct{}),
+	}
+}
+
+// Run opens the capture device and begins classifying packets.
+// It blocks until Stop() is called; intended to be launched as a goroutine.
+func (c *Collector) Run() {
+	if c.device == "" {
+		fmt.Fprintln(os.Stderr, "collector: DEVICE not set — bandwidth collection disabled")
+		return
+	}
+	if len(c.localNets) == 0 {
+		fmt.Fprintln(os.Stderr, "collector: LOCAL_NETS not set — cannot determine traffic direction")
 		return
 	}
 
-	now := time.Now()
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	handle, err := pcap.OpenLive(c.device, snapshotLen, c.promiscuous, capTimeout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "collector: cannot open %s: %v\n", c.device, err)
+		fmt.Fprintln(os.Stderr, "collector: pcap requires root or CAP_NET_RAW")
+		return
+	}
+	defer handle.Close()
 
-	// Remove interfaces that no longer exist in /proc/net/dev
-	for name := range c.current {
-		if _, exists := stats[name]; !exists {
-			delete(c.current, name)
-			delete(c.previous, name)
-		}
+	if err := handle.SetBPFFilter("ip or ip6"); err != nil {
+		fmt.Fprintf(os.Stderr, "collector: BPF filter error: %v\n", err)
 	}
 
-	for name, cur := range stats {
-		prev, hasPrev := c.previous[name]
-		ifType := c.getIfaceType(name)
-		vpnRouting, vpnSince := c.checkVPNRouting(name)
-		_, vpnTracked := c.vpnStatusFiles[name]
-		iface := &InterfaceStat{
-			Name:            name,
-			IfaceType:       ifType,
-			OperState:       readOperState(name),
-			Addrs:           getIfaceAddrs(name),
-			VPNRouting:      vpnRouting,
-			VPNRoutingSince: vpnSince,
-			VPNTracked:      vpnTracked,
-			RxBytes:         cur.rxBytes,
-			TxBytes:         cur.txBytes,
-			RxPackets:       cur.rxPackets,
-			TxPackets:       cur.txPackets,
-			RxErrors:        cur.rxErrors,
-			TxErrors:        cur.txErrors,
-			RxDropped:       cur.rxDropped,
-			TxDropped:       cur.txDropped,
-			Timestamp:       now.UnixMilli(),
-		}
+	fmt.Fprintf(os.Stderr, "collector: capturing on %s (promiscuous=%v)\n", c.device, c.promiscuous)
 
-		if hasPrev {
-			dt := now.Sub(prev.ts).Seconds()
-			if dt > 0 {
-				iface.RxRate = float64(cur.rxBytes-prev.rxBytes) / dt
-				iface.TxRate = float64(cur.txBytes-prev.txBytes) / dt
+	go c.rateLoop()
+
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		default:
+		}
+		data, _, err := handle.ReadPacketData()
+		if err != nil {
+			if err == pcap.NextErrorTimeoutExpired {
+				continue
 			}
+			fmt.Fprintf(os.Stderr, "collector: read error on %s: %v\n", c.device, err)
+			return
 		}
+		pkt := gopacket.NewPacket(data, handle.LinkType(), gopacket.DecodeOptions{
+			Lazy:   true,
+			NoCopy: true,
+		})
+		c.processPacket(pkt)
+	}
+}
 
-		c.current[name] = iface
-		cur.ts = now
-		c.previous[name] = cur
+// Stop signals the collector to shut down.
+func (c *Collector) Stop() {
+	close(c.stopCh)
+}
 
-		if hasPrev {
-			c.history[name] = append(c.history[name], HistoryPoint{
+// GetAll returns a single-element slice with the current aggregate stats.
+func (c *Collector) GetAll() []InterfaceStat {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return []InterfaceStat{c.stat}
+}
+
+// GetHistory returns the 24-hour rate history keyed by device name.
+func (c *Collector) GetHistory() map[string][]HistoryPoint {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cp := make([]HistoryPoint, len(c.history))
+	copy(cp, c.history)
+	return map[string][]HistoryPoint{c.device: cp}
+}
+
+// GetSparklines returns the last `duration` of rate data, downsampled to at
+// most `maxPoints` points, keyed by device name.
+func (c *Collector) GetSparklines(duration time.Duration, maxPoints int) map[string][]SparkPoint {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	cutoff := time.Now().Add(-duration).UnixMilli()
+	start := 0
+	for start < len(c.history) && c.history[start].Timestamp < cutoff {
+		start++
+	}
+	pts := c.history[start:]
+	if len(pts) == 0 {
+		return nil
+	}
+
+	var sp []SparkPoint
+	if len(pts) <= maxPoints {
+		sp = make([]SparkPoint, len(pts))
+		for i, p := range pts {
+			sp[i] = SparkPoint{RX: p.RxRate, TX: p.TxRate}
+		}
+	} else {
+		sp = make([]SparkPoint, maxPoints)
+		step := float64(len(pts)) / float64(maxPoints)
+		for i := 0; i < maxPoints; i++ {
+			idx := int(float64(i) * step)
+			if idx >= len(pts) {
+				idx = len(pts) - 1
+			}
+			sp[i] = SparkPoint{RX: pts[idx].RxRate, TX: pts[idx].TxRate}
+		}
+	}
+	return map[string][]SparkPoint{c.device: sp}
+}
+
+// ---------- internal ----------
+
+// processPacket classifies a single captured packet as RX or TX based
+// on whether its source / destination falls within LOCAL_NETS.
+func (c *Collector) processPacket(pkt gopacket.Packet) {
+	var srcIP, dstIP net.IP
+	var pktLen uint64
+
+	if ipLayer := pkt.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+		ip := ipLayer.(*layers.IPv4)
+		srcIP = ip.SrcIP
+		dstIP = ip.DstIP
+		pktLen = uint64(ip.Length)
+	} else if ipLayer := pkt.Layer(layers.LayerTypeIPv6); ipLayer != nil {
+		ip := ipLayer.(*layers.IPv6)
+		srcIP = ip.SrcIP
+		dstIP = ip.DstIP
+		pktLen = uint64(ip.Length) + 40 // IPv6 payload length excludes header
+	} else {
+		return
+	}
+
+	srcLocal := c.isLocal(srcIP)
+	dstLocal := c.isLocal(dstIP)
+
+	c.accMu.Lock()
+	switch {
+	case srcLocal && !dstLocal:
+		// LOCAL_NETS → remote = upload (TX)
+		c.txBytes += pktLen
+		c.txPackets++
+	case !srcLocal && dstLocal:
+		// remote → LOCAL_NETS = download (RX)
+		c.rxBytes += pktLen
+		c.rxPackets++
+	case srcLocal && dstLocal:
+		// intra-LAN traffic — count as both
+		c.rxBytes += pktLen
+		c.rxPackets++
+		c.txBytes += pktLen
+		c.txPackets++
+	}
+	// both-remote packets (shouldn't appear on a properly-filtered SPAN) are ignored
+	c.accMu.Unlock()
+}
+
+// isLocal returns true when ip falls within any of the configured LOCAL_NETS.
+func (c *Collector) isLocal(ip net.IP) bool {
+	for _, n := range c.localNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// rateLoop wakes every second, computes the delta rates, and appends a
+// history point.  It also prunes history older than 24 hours.
+func (c *Collector) rateLoop() {
+	ticker := time.NewTicker(rateInterval)
+	defer ticker.Stop()
+
+	var prevRx, prevTx uint64
+	prevTime := time.Now()
+
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			dt := now.Sub(prevTime).Seconds()
+			if dt <= 0 {
+				continue
+			}
+
+			c.accMu.Lock()
+			curRx := c.rxBytes
+			curTx := c.txBytes
+			curRxPkt := c.rxPackets
+			curTxPkt := c.txPackets
+			c.accMu.Unlock()
+
+			rxRate := float64(curRx-prevRx) / dt
+			txRate := float64(curTx-prevTx) / dt
+
+			c.mu.Lock()
+			c.stat = InterfaceStat{
+				Name:      c.device,
+				IfaceType: "span",
+				OperState: "up",
+				RxBytes:   curRx,
+				TxBytes:   curTx,
+				RxPackets: curRxPkt,
+				TxPackets: curTxPkt,
+				RxRate:    rxRate,
+				TxRate:    txRate,
 				Timestamp: now.UnixMilli(),
-				RxRate:    iface.RxRate,
-				TxRate:    iface.TxRate,
+			}
+			c.history = append(c.history, HistoryPoint{
+				Timestamp: now.UnixMilli(),
+				RxRate:    rxRate,
+				TxRate:    txRate,
 			})
-			if len(c.history[name]) > historyPruneAt {
+			if len(c.history) > historyPruneAt {
 				cutoff := now.Add(-historyMaxAge).UnixMilli()
 				idx := 0
-				for idx < len(c.history[name]) && c.history[name][idx].Timestamp < cutoff {
+				for idx < len(c.history) && c.history[idx].Timestamp < cutoff {
 					idx++
 				}
-				c.history[name] = c.history[name][idx:]
+				c.history = c.history[idx:]
 			}
+			c.mu.Unlock()
+
+			prevRx = curRx
+			prevTx = curTx
+			prevTime = now
+
+		case <-c.stopCh:
+			return
 		}
 	}
-}
-
-// readProcNetDev parses /proc/net/dev and returns stats for every interface.
-func readProcNetDev() (map[string]*rawStat, error) {
-	f, err := os.Open("/proc/net/dev")
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	result := make(map[string]*rawStat)
-	scanner := bufio.NewScanner(f)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		if lineNum <= 2 {
-			continue // skip header lines
-		}
-		line := scanner.Text()
-		colonIdx := strings.Index(line, ":")
-		if colonIdx < 0 {
-			continue
-		}
-		name := strings.TrimSpace(line[:colonIdx])
-		fields := strings.Fields(line[colonIdx+1:])
-		if len(fields) < 16 {
-			continue
-		}
-
-		stat := &rawStat{
-			rxBytes:   parseUint(fields[0]),
-			rxPackets: parseUint(fields[1]),
-			rxErrors:  parseUint(fields[2]),
-			rxDropped: parseUint(fields[3]),
-			txBytes:   parseUint(fields[8]),
-			txPackets: parseUint(fields[9]),
-			txErrors:  parseUint(fields[10]),
-			txDropped: parseUint(fields[11]),
-		}
-		result[name] = stat
-	}
-	return result, scanner.Err()
-}
-
-func parseUint(s string) uint64 {
-	v, _ := strconv.ParseUint(strings.TrimSpace(s), 10, 64)
-	return v
-}
-
-// getIfaceType returns a cached interface type, detecting on first call.
-func (c *Collector) getIfaceType(name string) string {
-	if t, ok := c.ifaceTypeCache[name]; ok {
-		return t
-	}
-	t := detectIfaceType(name)
-	c.ifaceTypeCache[name] = t
-	return t
-}
-
-// readOperState reads the operational state from sysfs.
-func readOperState(name string) string {
-	data, err := os.ReadFile("/sys/class/net/" + name + "/operstate")
-	if err != nil {
-		return "unknown"
-	}
-	return strings.TrimSpace(string(data))
-}
-
-// getIfaceAddrs returns the IP addresses (with CIDR prefix) assigned to an interface.
-func getIfaceAddrs(name string) []string {
-	iface, err := net.InterfaceByName(name)
-	if err != nil {
-		return nil
-	}
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return nil
-	}
-	var result []string
-	for _, a := range addrs {
-		result = append(result, a.String())
-	}
-	return result
-}
-
-// checkVPNRouting checks whether traffic is actively routed through a VPN interface
-// by looking for a sentinel file configured via VPN_STATUS_FILES.
-func (c *Collector) checkVPNRouting(name string) (bool, string) {
-	path, ok := c.vpnStatusFiles[name]
-	if !ok {
-		return false, ""
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false, ""
-	}
-	return true, strings.TrimSpace(string(data))
-}
-
-// detectIfaceType determines the interface category by inspecting sysfs and
-// falling back to name-based heuristics. Returns one of:
-// "physical", "vlan", "ppp", "vpn", "bridge", "bond", "loopback".
-func detectIfaceType(name string) string {
-	base := "/sys/class/net/" + name
-
-	// 1. Check if WireGuard by looking for the wireguard sysfs directory
-	if _, err := os.Stat(filepath.Join(base, "wireguard")); err == nil {
-		return "vpn"
-	}
-
-	// 2. Read uevent for DEVTYPE
-	if data, err := os.ReadFile(filepath.Join(base, "uevent")); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "DEVTYPE=") {
-				dt := strings.TrimPrefix(line, "DEVTYPE=")
-				switch dt {
-				case "vlan":
-					return "vlan"
-				case "bridge":
-					return "physical" // group bridges with physical
-				case "bond":
-					return "physical" // group bonds with physical
-				case "ppp":
-					return "ppp"
-				case "wireguard":
-					return "vpn"
-				case "gre", "gretap", "ip6gre", "ip6tnl", "ipip", "sit", "vti":
-					return "vpn"
-				}
-			}
-		}
-	}
-
-	// 3. Check /sys/class/net/<name>/type (ARPHRD_* constants)
-	if data, err := os.ReadFile(filepath.Join(base, "type")); err == nil {
-		ifType := strings.TrimSpace(string(data))
-		switch ifType {
-		case "772": // ARPHRD_LOOPBACK
-			return "loopback"
-		case "65534": // ARPHRD_NONE — common for WireGuard and tunnels
-			// Already checked for WireGuard above; remaining NONE types are tunnels
-			return "vpn"
-		case "512": // ARPHRD_PPP
-			return "ppp"
-		}
-	}
-
-	// 4. Name-based fallback
-	n := strings.ToLower(name)
-	if strings.HasPrefix(n, "tun") || strings.HasPrefix(n, "tap") {
-		return "vpn"
-	}
-	if strings.HasPrefix(n, "ppp") || strings.HasPrefix(n, "wwan") || strings.HasPrefix(n, "lte") {
-		return "ppp"
-	}
-	if strings.Contains(n, ".") {
-		return "vlan"
-	}
-
-	return "physical"
 }

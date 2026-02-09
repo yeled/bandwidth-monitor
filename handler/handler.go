@@ -108,10 +108,6 @@ func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, dp dns.Provider,
 				TxRate: iface.TxRate,
 				State:  iface.OperState,
 			})
-			if iface.VPNRouting {
-				out.VPN = true
-				out.VPNIface = iface.Name
-			}
 		}
 		if dp != nil {
 			if ds := dp.GetSummary(); ds != nil {
