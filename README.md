@@ -284,7 +284,8 @@ packaging/
   preremove.sh            → deb/rpm pre-remove script
 nfpm.yaml                 → deb/rpm packaging config (nfpm)
 .github/workflows/        → CI: builds deb, rpm, ipk, apk on push & tag
-scripts/                  → helper scripts (capture, check)
+nfpm.yaml                 → deb/rpm packaging config (nfpm)
+.github/workflows/        → CI: builds deb, rpm, ipk, apk on push & tag
 env.example               → example environment configuration
 bandwidth-monitor.service → systemd unit file
 Makefile                  → build, install, GeoIP download targets
