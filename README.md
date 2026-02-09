@@ -2,7 +2,7 @@
 
 A real-time network monitoring dashboard for Linux, written in Go. 
 
-Single-binary deployment with an embedded web UI, optional AdGuard Home DNS stats, UniFi wireless monitoring, GeoIP enrichment, and a macOS menu bar plugin.
+Single-binary deployment with an embedded web UI, optional DNS stats (AdGuard Home or NextDNS), UniFi wireless monitoring, GeoIP enrichment, and a macOS menu bar plugin.
 
 ## Features
 
@@ -20,7 +20,7 @@ Single-binary deployment with an embedded web UI, optional AdGuard Home DNS stat
 - **Reverse DNS** — resolves IPs to hostnames with in-memory cache
 
 ### DNS Tab
-- **AdGuard Home integration** — total queries, blocked count/percentage, average latency
+- **AdGuard Home or NextDNS integration** — total queries, blocked count/percentage, average latency
 - **Time-series charts** — queries and blocked requests over time
 - **Top clients, domains, and blocked domains** — pie charts + ranked detail tables
 - **Upstream DNS servers** — response counts and average latency
@@ -43,7 +43,7 @@ Single-binary deployment with an embedded web UI, optional AdGuard Home DNS stat
 
 - **Linux** — reads `/proc/net/dev` and `/sys/class/net/`
 - **libpcap-dev** — for packet capture (top talkers)
-- **Go 1.21+** — to build
+- **Go 1.24+** — to build
 
 ```bash
 # Debian/Ubuntu
@@ -265,7 +265,9 @@ main.go                   → entry point, env config, wires all components
 collector/                → reads /proc/net/dev, computes rates, 24h history, VPN routing
 talkers/                  → pcap packet capture, per-IP tracking, 1-min bucket aggregation
 handler/                  → HTTP REST API + WebSocket handler
+dns/                      → common DNS provider interface
 adguard/                  → AdGuard Home API client (stats, top clients/domains)
+nextdns/                  → NextDNS API client (stats, top clients/domains)
 unifi/                    → UniFi controller API client (APs, SSIDs, clients, live rates)
 geoip/                    → MaxMind MMDB GeoIP lookups (country, ASN)
 static/
@@ -282,6 +284,8 @@ packaging/
   preremove.sh            → deb/rpm pre-remove script
 nfpm.yaml                 → deb/rpm packaging config (nfpm)
 .github/workflows/        → CI: builds deb, rpm, ipk, apk on push & tag
+nfpm.yaml                 → deb/rpm packaging config (nfpm)
+.github/workflows/        → CI: builds deb, rpm, ipk, apk on push & tag
 env.example               → example environment configuration
 bandwidth-monitor.service → systemd unit file
 Makefile                  → build, install, GeoIP download targets
@@ -295,7 +299,7 @@ Makefile                  → build, install, GeoIP download targets
 | `/api/interfaces/history` | GET | 24h time-series per interface |
 | `/api/talkers/bandwidth` | GET | Top 10 by current bandwidth |
 | `/api/talkers/volume` | GET | Top 10 by 24h volume |
-| `/api/dns` | GET | AdGuard Home DNS summary |
+| `/api/dns` | GET | DNS summary (AdGuard Home or NextDNS) |
 | `/api/wifi` | GET | UniFi WiFi summary |
 | `/api/summary` | GET | Compact summary for menu bar clients |
 | `/api/ws` | WS | WebSocket — pushes all data every second |
