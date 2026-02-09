@@ -110,7 +110,7 @@ def fmt_rate:
 # DNS section (only if present)
 (if .dns then
     "---",
-    "DNS — AdGuard Home | size=11 color=#888888",
+    "DNS — \(.dns.provider_name // "DNS") | size=11 color=#888888",
     "  Queries:  \(.dns.total_queries) | font=JetBrainsMono-Regular size=12",
     "  Blocked:  \(.dns.blocked) (\(.dns.block_pct * 10 | round / 10)%) | font=JetBrainsMono-Regular size=12 color=#ef4444",
     "  Latency:  \(.dns.latency_ms * 10 | round / 10) ms | font=JetBrainsMono-Regular size=12"

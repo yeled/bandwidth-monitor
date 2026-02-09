@@ -79,6 +79,7 @@ func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, dp dns.Provider,
 			State  string  `json:"state"`
 		}
 		type dnsBrief struct {
+			Provider     string  `json:"provider_name"`
 			TotalQueries int     `json:"total_queries"`
 			Blocked      int     `json:"blocked"`
 			BlockPct     float64 `json:"block_pct"`
@@ -115,6 +116,7 @@ func MenuBarSummary(c *collector.Collector, t *talkers.Tracker, dp dns.Provider,
 		if dp != nil {
 			if ds := dp.GetSummary(); ds != nil {
 				out.DNS = &dnsBrief{
+					Provider:     ds.ProviderName,
 					TotalQueries: ds.TotalQueries,
 					Blocked:      ds.BlockedTotal,
 					BlockPct:     ds.BlockedPercent,

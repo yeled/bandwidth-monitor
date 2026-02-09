@@ -20,6 +20,8 @@ start_service() {
         ADGUARD_URL="${ADGUARD_URL:-}" \
         ADGUARD_USER="${ADGUARD_USER:-}" \
         ADGUARD_PASS="${ADGUARD_PASS:-}" \
+        NEXTDNS_PROFILE="${NEXTDNS_PROFILE:-}" \
+        NEXTDNS_API_KEY="${NEXTDNS_API_KEY:-}" \
         UNIFI_URL="${UNIFI_URL:-}" \
         UNIFI_USER="${UNIFI_USER:-}" \
         UNIFI_PASS="${UNIFI_PASS:-}" \
