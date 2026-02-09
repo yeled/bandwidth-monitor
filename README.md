@@ -115,6 +115,19 @@ For SPAN/mirror port setups or if auto-discovery doesn't cover all your addresse
 LOCAL_NETS=192.0.2.0/24,2001:db8::/48
 ```
 
+### VPN Routing Detection (OpenWrt)
+
+The `VPN_STATUS_FILES` variable tells bandwidth-monitor which sentinel files to check for active VPN routing. On OpenWrt, a hotplug script (`99-vpn-status`) is included that automatically creates and removes these sentinel files when WireGuard interfaces go up or down.
+
+The script is installed automatically with the OpenWrt package to `/etc/hotplug.d/iface/99-vpn-status`. It reads `VPN_STATUS_FILES` from `/etc/bandwidth-monitor/env` — the same file the main service uses — so there is nothing extra to configure:
+
+```bash
+# In /etc/bandwidth-monitor/env
+VPN_STATUS_FILES=wg0=/run/wg0-active,wg1=/run/wg1-active
+```
+
+When `wg0` comes up, the hotplug script writes a timestamp to `/run/wg0-active`. When it goes down, the file is removed. The dashboard shows a 🔒 icon on interfaces that are actively routing.
+
 ## Installation
 
 ### Pre-built packages
@@ -262,7 +275,9 @@ static/
 swiftbar/                 → macOS menu bar plugin
 packaging/
   openwrt-Makefile        → OpenWrt package definition
-  openwrt-files/          → procd init script for OpenWrt
+  openwrt-files/
+    bandwidth-monitor.init → procd init script for OpenWrt
+    99-vpn-status         → OpenWrt hotplug script for VPN sentinel files
   postinstall.sh          → deb/rpm post-install script
   preremove.sh            → deb/rpm pre-remove script
 nfpm.yaml                 → deb/rpm packaging config (nfpm)
