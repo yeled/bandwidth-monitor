@@ -51,6 +51,9 @@ define Package/bandwidth-monitor/install
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/bandwidth-monitor.init $(1)/etc/init.d/bandwidth-monitor
+
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_BIN) ./files/99-vpn-status $(1)/etc/hotplug.d/iface/99-vpn-status
 endef
 
 $(eval $(call GoBinPackage,bandwidth-monitor))

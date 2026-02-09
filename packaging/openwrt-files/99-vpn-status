@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# /etc/hotplug.d/iface/99-vpn-status
+# Writes/removes VPN sentinel files for bandwidth-monitor
+# when WireGuard interfaces go up/down.
+#
+# Reads VPN_STATUS_FILES from /etc/bandwidth-monitor/env
+# Format: VPN_STATUS_FILES=iface1=/run/iface1-active,iface2=/run/iface2-active
+
+ENV_FILE="/etc/bandwidth-monitor/env"
+
+[ -f "$ENV_FILE" ] || exit 0
+. "$ENV_FILE"
+
+[ -n "$VPN_STATUS_FILES" ] || exit 0
+
+# Walk the comma-separated iface=path pairs and find a match
+STATUS_FILE=""
+IFS=","
+for entry in $VPN_STATUS_FILES; do
+    iface="${entry%%=*}"
+    path="${entry#*=}"
+    # trim whitespace
+    iface="$(echo "$iface" | tr -d ' ')"
+    path="$(echo "$path" | tr -d ' ')"
+    if [ "$INTERFACE" = "$iface" ]; then
+        STATUS_FILE="$path"
+        break
+    fi
+done
+unset IFS
+
+[ -n "$STATUS_FILE" ] || exit 0
+
+case "$ACTION" in
+    ifup)
+        date '+%Y-%m-%d %H:%M' > "$STATUS_FILE"
+        logger -t vpn-status "$INTERFACE up, wrote $STATUS_FILE"
+        ;;
+    ifdown)
+        rm -f "$STATUS_FILE"
+        logger -t vpn-status "$INTERFACE down, removed $STATUS_FILE"
+        ;;
+esac
