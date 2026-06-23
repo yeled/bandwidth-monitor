@@ -140,12 +140,28 @@ func (c *Collector) GetAll() []InterfaceStat {
 }
 
 func (c *Collector) GetHistory() map[string][]HistoryPoint {
+	return c.GetHistoryWindow(0)
+}
+
+// GetHistoryWindow returns rate history within the last `duration`, keyed by
+// device name. A non-positive duration returns the full retained history.
+// This backs the /api/interfaces/history endpoint, letting clients backfill
+// the live chart after a disconnect, refresh, or hibernate.
+func (c *Collector) GetHistoryWindow(duration time.Duration) map[string][]HistoryPoint {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	var cutoff int64
+	if duration > 0 {
+		cutoff = time.Now().Add(-duration).UnixMilli()
+	}
 	result := make(map[string][]HistoryPoint, len(c.history))
 	for k, v := range c.history {
-		cp := make([]HistoryPoint, len(v))
-		copy(cp, v)
+		start := 0
+		for start < len(v) && v[start].Timestamp < cutoff {
+			start++
+		}
+		cp := make([]HistoryPoint, len(v)-start)
+		copy(cp, v[start:])
 		result[k] = cp
 	}
 	return result

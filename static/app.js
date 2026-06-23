@@ -1146,6 +1146,35 @@
         }
     }
 
+    // Rebuild the Live Traffic chart from server-stored history. The backend
+    // keeps a 24h, 1-sample/sec ring per interface, so this repaints the full
+    // 1h window on first load and fills any gap left by a refresh, disconnect,
+    // or hibernate. Called on every (re)connect.
+    function backfillFromHistory() {
+        var minutes = Math.ceil(MAX_PTS / 60); // chart window, in minutes
+        return fetch('/api/interfaces/history?minutes=' + minutes)
+            .then(function(r) { return r.json(); })
+            .then(function(hist) {
+                if (!hist) return;
+                var cutoff = Date.now() - MAX_PTS * 1000;
+                Object.keys(hist).forEach(function(name) {
+                    var pts = hist[name] || [];
+                    knownIfaces.add(name);
+                    var rx = [], tx = [];
+                    for (var i = 0; i < pts.length; i++) {
+                        if (pts[i].t < cutoff) continue;
+                        rx.push({ x: new Date(pts[i].t), y: pts[i].rx || 0 });
+                        tx.push({ x: new Date(pts[i].t), y: -(pts[i].tx || 0) });
+                    }
+                    if (rx.length > MAX_PTS) { rx = rx.slice(-MAX_PTS); tx = tx.slice(-MAX_PTS); }
+                    chartData[name] = { rx: rx, tx: tx };
+                });
+                renderIfaceTabs();
+                updateChart();
+            })
+            .catch(function(e) { console.error('history backfill failed', e); });
+    }
+
     function connect() {
         var p = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(p + '//' + location.host + '/api/ws');
@@ -1153,6 +1182,8 @@
             rd = 1000;
             document.getElementById('statusDot').className = 'status-dot';
             document.getElementById('statusText').textContent = 'Live';
+            // Backfill the gap accumulated while we were disconnected/paused.
+            backfillFromHistory();
         };
         ws.onclose = function() {
             document.getElementById('statusDot').className = 'status-dot error';
@@ -1198,12 +1229,18 @@
             banner.className = 'vpn-banner inactive';
         }
 
-        var now = new Date();
+        // Use the server timestamp so live points line up with backfilled
+        // history points (same clock), keeping the chart contiguous.
+        var ts = d.timestamp || Date.now();
+        var now = new Date(ts);
         for (var f of ifaces) {
             if (!chartData[f.name]) chartData[f.name] = { rx: [], tx: [] };
-            chartData[f.name].rx.push({ x: now, y: f.rx_rate || 0 });
-            chartData[f.name].tx.push({ x: now, y: -(f.tx_rate || 0) });
-            if (chartData[f.name].rx.length > MAX_PTS) { chartData[f.name].rx.shift(); chartData[f.name].tx.shift(); }
+            var arr = chartData[f.name];
+            var last = arr.rx.length ? +arr.rx[arr.rx.length - 1].x : 0;
+            if (ts <= last) continue; // already have this point from backfill/prior tick
+            arr.rx.push({ x: now, y: f.rx_rate || 0 });
+            arr.tx.push({ x: now, y: -(f.tx_rate || 0) });
+            if (arr.rx.length > MAX_PTS) { arr.rx.shift(); arr.tx.shift(); }
         }
 
         renderIfaceCards(ifaces);

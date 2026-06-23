@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"bandwidth-monitor/collector"
@@ -29,7 +30,14 @@ func InterfaceStats(c *collector.Collector) http.HandlerFunc {
 func InterfaceHistory(c *collector.Collector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(c.GetHistory())
+		// Optional ?minutes=N limits the returned window (default: full 24h).
+		var window time.Duration
+		if m := r.URL.Query().Get("minutes"); m != "" {
+			if n, err := strconv.Atoi(m); err == nil && n > 0 {
+				window = time.Duration(n) * time.Minute
+			}
+		}
+		json.NewEncoder(w).Encode(c.GetHistoryWindow(window))
 	}
 }
 
